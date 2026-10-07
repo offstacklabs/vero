@@ -1,0 +1,8 @@
+version: '1.0'
+database:
+  dialect: sqlite
+  connection_string: sqlite:///vero_sample.db
+llm:
+  model: gpt-4o
+  temperature: 0.0
+context_dir: .vero

@@ -1,0 +1,29 @@
+[project]
+name = "vero-cli"
+version = "0.1.0"
+description = "Vero: Open-Source Headless Analytics Agent Framework (Cursor for Data)"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "duckdb>=1.5.6",
+    "fastapi>=0.142.2",
+    "fastmcp>=4.0.10",
+    "litellm>=1.103.2",
+    "mcp>=2.2.0",
+    "pydantic>=2.13.5",
+    "pyyaml>=6.0.3",
+    "rich>=15.0.0",
+    "sqlalchemy>=2.1.2",
+    "typer>=0.27.2",
+    "uvicorn>=0.54.0",
+]
+
+[project.scripts]
+vero = "vero.cli:app"
+
+[tool.hatch.build.targets.wheel]
+packages = ["vero"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
