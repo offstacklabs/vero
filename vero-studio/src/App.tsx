@@ -9,15 +9,23 @@ import {
   User,
   FileText,
   TerminalSquare,
-  RefreshCw
+  RefreshCw,
+  LineChart as LineChartIcon
 } from 'lucide-react';
 import { marked } from 'marked';
 import { ChartVisualizer } from './components/ChartVisualizer';
 import { Scratchpad } from './components/Scratchpad';
+import { MetricCard } from './components/MetricCard';
 
 interface Schema {
   table: string;
   content: string;
+}
+
+interface SemanticMetric {
+  name: string;
+  description: string;
+  sql: string;
 }
 
 interface Message {
@@ -40,15 +48,16 @@ export default function App() {
     {
       id: '1',
       sender: 'assistant',
-      text: 'Hello! I am Vero, your open-source analytics agent. How can I assist with your data warehouse today?'
+      text: 'Hello! I am Vero. I can connect to Postgres, Snowflake, or BigQuery. How can I assist with your data today?'
     }
   ]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [schemas, setSchemas] = useState<Schema[]>([]);
-  const [activeTab, setActiveTab] = useState<'chat' | 'schemas' | 'scratchpad'>('chat');
+  const [semanticMetrics, setSemanticMetrics] = useState<SemanticMetric[]>([]);
+  const [activeTab, setActiveTab] = useState<'chat' | 'schemas' | 'scratchpad' | 'metrics'>('chat');
   const [selectedSchema, setSelectedSchema] = useState<Schema | null>(null);
-  const [dialect, setDialect] = useState<string>('sqlite');
+  const [dialect, setDialect] = useState<string>('postgres');
   const [syncing, setSyncing] = useState(false);
 
   const fetchConfig = () => {
@@ -80,8 +89,20 @@ export default function App() {
       });
   };
 
+  const fetchMetrics = () => {
+    fetch('http://127.0.0.1:8000/api/metrics')
+      .then(res => res.json())
+      .then(data => {
+        if (data.metrics) {
+          setSemanticMetrics(data.metrics);
+        }
+      })
+      .catch(() => console.error("Could not fetch metrics"));
+  };
+
   useEffect(() => {
     fetchSchemas();
+    fetchMetrics();
     fetchConfig();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -175,6 +196,10 @@ export default function App() {
     }
   };
 
+  const isSingleMetric = (data: Message['data']) => {
+    return data && data.columns.length === 1 && data.rows.length === 1;
+  };
+
   return (
     <div className="app-container">
       {/* Sidebar */}
@@ -198,6 +223,13 @@ export default function App() {
           >
             <TerminalSquare size={16} />
             <span>SQL Scratchpad</span>
+          </div>
+          <div 
+            className={`nav-item ${activeTab === 'metrics' ? 'active' : ''}`}
+            onClick={() => setActiveTab('metrics')}
+          >
+            <LineChartIcon size={16} />
+            <span>Semantic Layer</span>
           </div>
           <div 
             className={`nav-item ${activeTab === 'schemas' ? 'active' : ''}`}
@@ -274,7 +306,7 @@ export default function App() {
                     </div>
                   )}
 
-                  {msg.data && (
+                  {msg.data && !isSingleMetric(msg.data) && (
                     <div className="table-wrapper">
                       <table className="data-table">
                         <thead>
@@ -297,7 +329,16 @@ export default function App() {
                     </div>
                   )}
 
-                  {msg.suggested_visualization && msg.suggested_visualization !== 'table' && msg.data && (
+                  {isSingleMetric(msg.data) && (
+                    <div style={{ marginTop: '16px' }}>
+                      <MetricCard 
+                        label={msg.data!.columns[0]} 
+                        value={msg.data!.rows[0][0]} 
+                      />
+                    </div>
+                  )}
+
+                  {!isSingleMetric(msg.data) && msg.suggested_visualization && msg.suggested_visualization !== 'table' && msg.data && (
                     <div className="chart-container">
                       <div style={{ fontSize: '12px', color: '#8b949e', marginBottom: '12px' }}>
                         Data Visualization ({msg.suggested_visualization})
@@ -341,6 +382,28 @@ export default function App() {
 
         {activeTab === 'scratchpad' && (
           <Scratchpad onExecute={handleRunScratchpad} loading={loading} />
+        )}
+
+        {activeTab === 'metrics' && (
+          <div className="metrics-viewer">
+            <h2 style={{ marginBottom: '16px', fontSize: '20px' }}>Semantic Layer (Metrics)</h2>
+            <p style={{ color: 'var(--text-muted)', marginBottom: '24px', fontSize: '14px' }}>
+              These metrics are automatically injected into the agent's context, ensuring accurate and consistent SQL generation.
+            </p>
+            {semanticMetrics.length === 0 ? (
+              <div style={{ color: '#8b949e' }}>No metrics defined in .vero/metrics.yaml</div>
+            ) : (
+              semanticMetrics.map(m => (
+                <div key={m.name} className="semantic-metric-card">
+                  <div className="semantic-metric-name">{m.name}</div>
+                  <div className="semantic-metric-desc">{m.description}</div>
+                  <div className="sql-box" style={{ margin: 0, backgroundColor: 'var(--bg-primary)' }}>
+                    {m.sql}
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
         )}
 
         {activeTab === 'schemas' && (

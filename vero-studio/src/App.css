@@ -329,7 +329,58 @@
   justify-content: flex-end;
 }
 
-/* Markdown tables in schema viewer */
+/* Semantic Layer / Metrics */
+.metrics-viewer {
+  padding: 24px;
+  overflow-y: auto;
+}
+
+.semantic-metric-card {
+  background-color: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 16px;
+}
+
+.semantic-metric-name {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--accent-color);
+  margin-bottom: 8px;
+}
+
+.semantic-metric-desc {
+  font-size: 13px;
+  color: var(--text-muted);
+  margin-bottom: 12px;
+}
+
+/* KPI Card Visualization */
+.metric-card-container {
+  background: linear-gradient(145deg, var(--bg-tertiary) 0%, var(--bg-secondary) 100%);
+  border: 1px solid var(--border-color);
+  border-left: 4px solid var(--accent-color);
+  border-radius: 8px;
+  padding: 20px;
+  display: inline-block;
+  min-width: 240px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+}
+
+.metric-label {
+  font-size: 13px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 8px;
+}
+
+.metric-value {
+  font-size: 32px;
+  font-weight: 700;
+  color: var(--text-main);
+}
 .schema-viewer {
   padding: 24px;
   overflow-y: auto;
