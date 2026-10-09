@@ -9,8 +9,8 @@ from dotenv import load_dotenv
 load_dotenv()
 
 class DatabaseConfig(BaseModel):
-    dialect: str = Field(default="sqlite", description="Database dialect (sqlite, postgres, duckdb, snowflake, bigquery)")
-    connection_string: str = Field(default="sqlite:///vero_sample.db", description="SQLAlchemy or DuckDB connection string")
+    dialect: str = Field(default="postgres", description="Database dialect (postgres, snowflake, bigquery, duckdb)")
+    connection_string: str = Field(default="postgresql://user:password@localhost:5432/vero_db", description="SQLAlchemy connection string")
 
 class LLMConfig(BaseModel):
     model: str = Field(default="gpt-4o", description="LiteLLM model string (e.g. gpt-4o, claude-3-5-sonnet, ollama/llama3)")

@@ -24,8 +24,8 @@ console = Console()
 
 @app.command()
 def init(
-    dialect: str = typer.Option("sqlite", "--dialect", "-d", help="Database dialect (sqlite, duckdb, postgres, snowflake)"),
-    conn: str = typer.Option("sqlite:///vero_sample.db", "--conn", "-c", help="Connection string")
+    dialect: str = typer.Option("postgres", "--dialect", "-d", help="Database dialect (postgres, snowflake, bigquery, duckdb)"),
+    conn: str = typer.Option("postgresql://user:password@localhost:5432/vero_db", "--conn", "-c", help="Connection string")
 ):
     """Initializes the .vero context directory and configuration."""
     console.print(Panel.fit("[bold cyan]Initializing Vero Project[/bold cyan]", border_style="cyan"))
@@ -38,58 +38,9 @@ def init(
 
     engine = ContextEngine()
     engine.initialize_workspace()
-    console.print("[green]✓ Initialized[/green] .vero/ context directory and RULES.md")
+    console.print("[green]✓ Initialized[/green] .vero/ context directory (schemas, metrics, rules)")
 
-    # If using default sample sqlite, seed sample ecommerce tables
-    if "vero_sample.db" in conn:
-        _seed_sample_db(VeroConfig.get_workspace_root() / "vero_sample.db")
-        console.print("[green]✓ Seeded[/green] sample eCommerce database at vero_sample.db")
-
-    console.print("\n[bold green]Ready![/bold green] Run [cyan]vero sync[/cyan] to introspect schemas.")
-
-def _seed_sample_db(db_path: Path):
-    conn = sqlite3.connect(str(db_path))
-    cur = conn.cursor()
-    cur.execute("""
-        CREATE TABLE IF NOT EXISTS customers (
-            id INTEGER PRIMARY KEY,
-            name TEXT NOT NULL,
-            email TEXT UNIQUE,
-            signup_date TEXT,
-            plan TEXT
-        );
-    """)
-    cur.execute("""
-        CREATE TABLE IF NOT EXISTS orders (
-            id INTEGER PRIMARY KEY,
-            customer_id INTEGER,
-            amount REAL,
-            status TEXT,
-            created_at TEXT,
-            FOREIGN KEY (customer_id) REFERENCES customers (id)
-        );
-    """)
-    cur.execute("DELETE FROM customers;")
-    cur.execute("DELETE FROM orders;")
-
-    customers = [
-        (1, "Alice Smith", "alice@example.com", "2024-01-15", "enterprise"),
-        (2, "Bob Jones", "bob@example.com", "2024-02-01", "pro"),
-        (3, "Charlie Brown", "charlie@example.com", "2024-03-10", "starter"),
-        (4, "Diana Prince", "diana@example.com", "2024-03-22", "pro"),
-    ]
-    cur.executemany("INSERT INTO customers VALUES (?, ?, ?, ?, ?)", customers)
-
-    orders = [
-        (101, 1, 1200.00, "completed", "2024-03-01"),
-        (102, 1, 2400.00, "completed", "2024-03-15"),
-        (103, 2, 450.00, "completed", "2024-03-16"),
-        (104, 3, 50.00, "refunded", "2024-03-18"),
-        (105, 4, 399.00, "completed", "2024-03-25"),
-    ]
-    cur.executemany("INSERT INTO orders VALUES (?, ?, ?, ?, ?)", orders)
-    conn.commit()
-    conn.close()
+    console.print("\n[bold green]Ready![/bold green] Update config.yaml with your credentials, then run [cyan]vero sync[/cyan] to introspect schemas.")
 
 @app.command()
 def doctor():
