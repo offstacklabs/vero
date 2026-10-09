@@ -389,6 +389,30 @@ body {
   color: var(--text-main);
 }
 
+/* Streaming Stage Pill */
+.streaming-stage-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--accent-gradient-subtle, var(--bg-tertiary));
+  border: 1px solid var(--border-color);
+  padding: 6px 14px;
+  border-radius: 20px;
+  font-size: 13px;
+  color: var(--accent-color);
+  font-weight: 500;
+  margin-top: 8px;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.spin {
+  animation: spin 1s linear infinite;
+}
+
 /* Context Grounding & Reasoning Trace */
 .reasoning-trace-card {
   margin: 14px 0;

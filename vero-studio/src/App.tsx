@@ -12,7 +12,8 @@ import {
   LineChart as LineChartIcon,
   Play,
   Sun,
-  Moon
+  Moon,
+  Loader2
 } from 'lucide-react';
 import { marked } from 'marked';
 import { ChartVisualizer } from './components/ChartVisualizer';
@@ -40,6 +41,8 @@ interface Message {
   suggested_followups?: string[];
   duration_ms?: number;
   reflection_steps?: { attempt: number; failed_sql: string; error: string; thought?: string }[];
+  is_streaming?: boolean;
+  status_message?: string;
   data?: {
     columns: string[];
     rows: any[][];
@@ -150,43 +153,85 @@ export default function App() {
       text: textToSend
     };
 
-    setMessages(prev => [...prev, userMessage]);
+    const assistantMsgId = (Date.now() + 1).toString();
+    const initialAssistantMessage: Message = {
+      id: assistantMsgId,
+      sender: 'assistant',
+      text: '',
+      is_streaming: true,
+      status_message: 'Grounding schemas & semantic metrics...'
+    };
+
+    setMessages(prev => [...prev, userMessage, initialAssistantMessage]);
     setInput('');
     setLoading(true);
 
     try {
-      const response = await fetch(`${API_BASE}/api/chat`, {
+      const response = await fetch(`${API_BASE}/api/chat/stream`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ question: textToSend, execute: true })
       });
 
-      if (!response.ok) throw new Error('API request failed');
-      const data = await response.json();
+      if (!response.ok) throw new Error('Streaming API request failed');
 
-      const assistantMessage: Message = {
-        id: (Date.now() + 1).toString(),
-        sender: 'assistant',
-        text: data.explanation || 'Here is the query and data you requested.',
-        thought: data.thought,
-        sql: data.sql,
-        tables_used: data.tables_used,
-        suggested_followups: data.suggested_followups,
-        duration_ms: data.duration_ms,
-        reflection_steps: data.reflection_steps,
-        data: data.data,
-        suggested_visualization: data.suggested_visualization,
-        error: data.error
-      };
+      const reader = response.body?.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
 
-      setMessages(prev => [...prev, assistantMessage]);
+      if (reader) {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const parts = buffer.split('\n\n');
+          buffer = parts.pop() || '';
+
+          for (const block of parts) {
+            const trimmed = block.trim();
+            if (trimmed.startsWith('data: ')) {
+              try {
+                const event = JSON.parse(trimmed.slice(6));
+                if (event.type === 'stage') {
+                  setMessages(prev => prev.map(m => 
+                    m.id === assistantMsgId ? { ...m, status_message: event.message } : m
+                  ));
+                } else if (event.type === 'complete') {
+                  const data = event.result;
+                  setMessages(prev => prev.map(m => 
+                    m.id === assistantMsgId ? {
+                      id: assistantMsgId,
+                      sender: 'assistant',
+                      text: data.explanation || 'Here is the query and data you requested.',
+                      thought: data.thought,
+                      sql: data.sql,
+                      tables_used: data.tables_used,
+                      suggested_followups: data.suggested_followups,
+                      duration_ms: data.duration_ms,
+                      reflection_steps: data.reflection_steps,
+                      data: data.data,
+                      suggested_visualization: data.suggested_visualization,
+                      error: data.error,
+                      is_streaming: false
+                    } : m
+                  ));
+                }
+              } catch (parseErr) {
+                console.error("Error parsing stream chunk:", parseErr);
+              }
+            }
+          }
+        }
+      }
     } catch (err) {
-      setMessages(prev => [...prev, {
-        id: (Date.now() + 1).toString(),
-        sender: 'assistant',
-        text: `Error connecting to the Vero agent server.`,
-        error: String(err)
-      }]);
+      setMessages(prev => prev.map(m => 
+        m.id === assistantMsgId ? {
+          ...m,
+          text: `Error connecting to the Vero agent server.`,
+          error: String(err),
+          is_streaming: false
+        } : m
+      ));
     } finally {
       setLoading(false);
     }
@@ -349,7 +394,14 @@ export default function App() {
                     <span>{msg.sender === 'assistant' ? 'Vero Analytics Agent' : 'You'}</span>
                   </div>
 
-                  <div className="message-body">{msg.text}</div>
+                  {msg.is_streaming ? (
+                    <div className="streaming-stage-pill">
+                      <Loader2 size={13} className="spin" />
+                      <span>{msg.status_message || 'Analyzing warehouse...'}</span>
+                    </div>
+                  ) : (
+                    <div className="message-body">{msg.text}</div>
+                  )}
 
                   {/* Context Grounding & Multi-Step Reasoning Trace */}
                   {msg.sender === 'assistant' && (
