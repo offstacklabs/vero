@@ -7,6 +7,7 @@ from pathlib import Path
 import uvicorn
 import json
 import sqlite3
+import sqlalchemy
 
 from vero.config import VeroConfig, DatabaseConfig
 from vero.context import ContextEngine
@@ -41,13 +42,13 @@ def init(
 
     # If using default sample sqlite, seed sample ecommerce tables
     if "vero_sample.db" in conn:
-        _seed_sample_db("vero_sample.db")
+        _seed_sample_db(VeroConfig.get_workspace_root() / "vero_sample.db")
         console.print("[green]✓ Seeded[/green] sample eCommerce database at vero_sample.db")
 
     console.print("\n[bold green]Ready![/bold green] Run [cyan]vero sync[/cyan] to introspect schemas.")
 
-def _seed_sample_db(db_path: str):
-    conn = sqlite3.connect(db_path)
+def _seed_sample_db(db_path: Path):
+    conn = sqlite3.connect(str(db_path))
     cur = conn.cursor()
     cur.execute("""
         CREATE TABLE IF NOT EXISTS customers (
@@ -91,6 +92,44 @@ def _seed_sample_db(db_path: str):
     conn.close()
 
 @app.command()
+def doctor():
+    """Diagnoses the environment and checks database connectivity."""
+    console.print(Panel.fit("[bold cyan]Vero Doctor - Environment Check[/bold cyan]", border_style="cyan"))
+    
+    config = VeroConfig.load()
+    console.print(f"Loaded config from workspace: [bold]{VeroConfig.get_workspace_root()}[/bold]")
+    console.print(f"Dialect: [green]{config.database.dialect}[/green]")
+    
+    db = DatabaseManager(dialect=config.database.dialect, connection_string=config.database.connection_string)
+    
+    try:
+        with console.status("Testing database connection..."):
+            db.execute_query("SELECT 1")
+        console.print("[bold green]✓ Database Connection Successful[/bold green]")
+    except Exception as e:
+        console.print(f"[bold red]✗ Database Connection Failed:[/bold red] {str(e)}")
+
+@app.command()
+def run(query: str):
+    """Executes a raw SQL query directly against the connected warehouse."""
+    config = VeroConfig.load()
+    db = DatabaseManager(dialect=config.database.dialect, connection_string=config.database.connection_string)
+    
+    try:
+        with console.status("Executing query..."):
+            data = db.execute_query(query)
+            
+        table = Table(show_header=True, header_style="bold cyan")
+        for col in data["columns"]:
+            table.add_column(str(col))
+        for row in data["rows"]:
+            table.add_row(*[str(cell) for cell in row])
+        console.print(table)
+        console.print(f"[dim]Returned {data['row_count']} row(s)[/dim]")
+    except Exception as e:
+        console.print(f"[bold red]Execution Error:[/bold red] {str(e)}")
+
+@app.command()
 def sync():
     """Introspects connected database and synchronizes schemas to .vero/schemas/."""
     console.print(Panel.fit("[bold cyan]Syncing Database Schemas[/bold cyan]", border_style="cyan"))
@@ -102,18 +141,20 @@ def sync():
         engine = ContextEngine()
         engine.sync_schemas(schema_info)
 
-        table = Table(title="Synced Tables", show_header=True, header_style="bold magenta")
-        table.add_column("Table Name", style="cyan")
+        table = Table(title="Synced Tables/Views", show_header=True, header_style="bold magenta")
+        table.add_column("Entity Name", style="cyan")
+        table.add_column("Type", style="green")
         table.add_column("Columns", style="green")
         table.add_column("Foreign Keys", style="yellow")
 
         for name, details in schema_info.items():
+            entity_type = "View" if details.get("is_view") else "Table"
             col_count = len(details["columns"])
             fk_count = len(details.get("foreign_keys", []))
-            table.add_row(name, str(col_count), str(fk_count))
+            table.add_row(name, entity_type, str(col_count), str(fk_count))
 
         console.print(table)
-        console.print(f"[bold green]✓ Successfully synced {len(schema_info)} tables to .vero/schemas/[/bold green]")
+        console.print(f"[bold green]✓ Successfully synced {len(schema_info)} entities to .vero/schemas/[/bold green]")
     except Exception as e:
         console.print(f"[bold red]Sync Failed:[/bold red] {str(e)}")
 
@@ -131,6 +172,16 @@ def chat():
             if question.lower() in ["exit", "quit", "q"]:
                 console.print("[dim]Goodbye![/dim]")
                 break
+            
+            # Simple terminal command intercepts
+            if question.startswith("/"):
+                cmd = question.lower()
+                if cmd == "/clear":
+                    agent.history = []
+                    console.print("[dim]Chat history cleared.[/dim]")
+                else:
+                    console.print(f"[dim]Unknown command: {cmd}[/dim]")
+                continue
 
             with console.status("[bold green]Generating SQL and reasoning...[/bold green]"):
                 res = agent.ask(question)
