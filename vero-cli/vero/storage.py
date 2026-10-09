@@ -171,7 +171,15 @@ class DatabaseContextStorage(ContextStorage):
 
     def __init__(self, connection_string: str):
         self.connection_string = connection_string
-        self.engine = create_engine(self.connection_string)
+        
+        # In-memory SQLite requires StaticPool to share state across multiple connection calls
+        engine_kwargs = {}
+        if ":memory:" in self.connection_string:
+            from sqlalchemy.pool import StaticPool
+            engine_kwargs["connect_args"] = {"check_same_thread": False}
+            engine_kwargs["poolclass"] = StaticPool
+
+        self.engine = create_engine(self.connection_string, **engine_kwargs)
         self.metadata = MetaData()
 
         self.rules_table = Table(

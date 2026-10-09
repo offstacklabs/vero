@@ -37,20 +37,25 @@ def get_config():
     config = VeroConfig.load()
     return config.model_dump()
 
+class RulesUpdateRequest(BaseModel):
+    rules: str
+
+class RuleAppendRequest(BaseModel):
+    rule: str
+
+class MetricCreateRequest(BaseModel):
+    name: str
+    description: Optional[str] = ""
+    sql: str
+
+class AnnotationRequest(BaseModel):
+    annotation: str
+
 @app.get("/api/schemas")
 def get_schemas():
     engine = ContextEngine()
-    schemas_dir = engine.schemas_dir
-    if not schemas_dir.exists():
-        return {"schemas": []}
-    
-    results = []
-    for file in sorted(schemas_dir.glob("*.md")):
-        if file.name != "README.md":
-            results.append({
-                "table": file.stem,
-                "content": file.read_text(encoding="utf-8")
-            })
+    schemas = engine.get_schemas()
+    results = [{"table": name, "content": md} for name, md in sorted(schemas.items())]
     return {"schemas": results}
 
 @app.post("/api/sync")
@@ -65,28 +70,52 @@ def sync_schemas():
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-import yaml
-import time
-import re
-
 @app.get("/api/rules")
 def get_rules():
     engine = ContextEngine()
-    if engine.rules_file.exists():
-        return {"rules": engine.rules_file.read_text(encoding="utf-8")}
-    return {"rules": ""}
+    return {"rules": engine.get_rules()}
+
+@app.put("/api/rules")
+def update_rules(req: RulesUpdateRequest):
+    engine = ContextEngine()
+    engine.save_rules(req.rules)
+    return {"success": True, "rules": engine.get_rules()}
+
+@app.post("/api/rules/append")
+def append_rule(req: RuleAppendRequest):
+    engine = ContextEngine()
+    engine.append_rule(req.rule)
+    return {"success": True, "rules": engine.get_rules()}
 
 @app.get("/api/metrics")
 def get_metrics():
     engine = ContextEngine()
-    if engine.metrics_file.exists():
-        try:
-            with open(engine.metrics_file, 'r', encoding="utf-8") as f:
-                data = yaml.safe_load(f)
-                return {"metrics": data.get("metrics", [])}
-        except Exception:
-            return {"metrics": []}
-    return {"metrics": []}
+    return {"metrics": engine.get_metrics()}
+
+@app.post("/api/metrics")
+def create_or_update_metric(req: MetricCreateRequest):
+    engine = ContextEngine()
+    metric_data = {
+        "name": req.name.strip(),
+        "description": req.description.strip() if req.description else "",
+        "sql": req.sql.strip()
+    }
+    engine.save_metric(metric_data)
+    return {"success": True, "metric": metric_data}
+
+@app.delete("/api/metrics/{metric_name}")
+def delete_metric(metric_name: str):
+    engine = ContextEngine()
+    deleted = engine.delete_metric(metric_name)
+    if not deleted:
+        raise HTTPException(status_code=404, detail=f"Metric '{metric_name}' not found")
+    return {"success": True, "deleted": metric_name}
+
+@app.post("/api/schemas/{table_name}/annotate")
+def annotate_table(table_name: str, req: AnnotationRequest):
+    engine = ContextEngine()
+    engine.save_table_annotation(table_name, req.annotation)
+    return {"success": True, "table": table_name}
 
 @app.get("/api/tables/{table_name}/preview")
 def preview_table(table_name: str):
