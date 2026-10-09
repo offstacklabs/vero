@@ -4,6 +4,7 @@ from rich.table import Table
 from rich.panel import Panel
 from rich.markdown import Markdown
 from pathlib import Path
+from typing import Optional, Dict, Any, List
 import uvicorn
 import json
 import sqlite3
@@ -110,9 +111,12 @@ def sync():
         console.print(f"[bold red]Sync Failed:[/bold red] {str(e)}")
 
 @app.command()
-def chat():
+def chat(
+    domain: Optional[str] = typer.Option(None, "--domain", "-d", help="Scope context to a specific domain (e.g. finance, marketing)")
+):
     """Launches the Vero Interactive Analytics Terminal."""
-    console.print(Panel.fit("[bold cyan]Vero Analytics Agent[/bold cyan] (Type 'exit' to quit)", border_style="cyan"))
+    domain_msg = f" [bold magenta]({domain.capitalize()} Domain)[/bold magenta]" if domain else ""
+    console.print(Panel.fit(f"[bold cyan]Vero Analytics Agent{domain_msg}[/bold cyan] (Type 'exit' to quit)", border_style="cyan"))
     agent = VeroAgent()
 
     while True:
@@ -135,7 +139,7 @@ def chat():
                 continue
 
             with console.status("[bold green]Generating SQL and reasoning...[/bold green]"):
-                res = agent.ask(question)
+                res = agent.ask(question, domain=domain)
 
             if res.get("thought"):
                 console.print(f"[dim italic]Reasoning: {res['thought']}[/dim italic]")
@@ -247,18 +251,24 @@ rules_app = typer.Typer(
 app.add_typer(rules_app, name="rules")
 
 @rules_app.command("show")
-def rules_show():
-    """Displays the active business rules."""
+def rules_show(
+    domain: str = typer.Option("global", "--domain", "-d", help="Domain scope (default: global)")
+):
+    """Displays active business rules for a domain (inherits global rules)."""
     engine = ContextEngine()
-    rules = engine.get_rules()
-    console.print(Panel(Markdown(rules) if rules else "[dim]No rules configured yet.[/dim]", title="Vero Business Rules"))
+    rules = engine.get_rules(domain=domain)
+    title = f"Vero Rules [{domain.capitalize()} Domain]"
+    console.print(Panel(Markdown(rules) if rules else "[dim]No rules configured yet.[/dim]", title=title))
 
 @rules_app.command("add")
-def rules_add(rule: str = typer.Argument(..., help="Rule or convention to add")):
-    """Appends a new business rule or convention."""
+def rules_add(
+    rule: str = typer.Argument(..., help="Rule or convention to add"),
+    domain: str = typer.Option("global", "--domain", "-d", help="Domain to attach rule to")
+):
+    """Appends a new business rule to a specific domain."""
     engine = ContextEngine()
-    engine.append_rule(rule)
-    console.print(f"[bold green]✓ Rule added:[/bold green] {rule}")
+    engine.append_rule(rule, domain=domain)
+    console.print(f"[bold green]✓ Rule added to {domain}:[/bold green] {rule}")
 
 metrics_app = typer.Typer(
     name="metrics",
@@ -268,28 +278,52 @@ metrics_app = typer.Typer(
 app.add_typer(metrics_app, name="metrics")
 
 @metrics_app.command("list")
-def metrics_list():
-    """Lists all registered semantic metrics."""
+def metrics_list(
+    domain: Optional[str] = typer.Option(None, "--domain", "-d", help="Filter metrics by domain")
+):
+    """Lists registered semantic metrics (optionally filtered by domain)."""
     engine = ContextEngine()
-    metrics = engine.get_metrics()
-    table = Table(title="Semantic Metrics", show_header=True, header_style="bold magenta")
+    metrics = engine.get_metrics(domain=domain)
+    table = Table(title=f"Semantic Metrics {f'[{domain.capitalize()}]' if domain else '[All Domains]'}", show_header=True, header_style="bold magenta")
     table.add_column("Metric Name", style="cyan")
+    table.add_column("Domain", style="yellow")
     table.add_column("Description", style="white")
     table.add_column("SQL Formula", style="green")
     for m in metrics:
-        table.add_row(m["name"], m.get("description", "-"), m.get("sql", "-"))
+        table.add_row(m["name"], m.get("domain", "global"), m.get("description", "-"), m.get("sql", "-"))
     console.print(table)
 
 @metrics_app.command("add")
 def metrics_add(
     name: str = typer.Option(..., "--name", "-n", help="Metric identifier (e.g. mrr)"),
     sql: str = typer.Option(..., "--sql", "-s", help="SQL aggregation expression"),
-    description: str = typer.Option("", "--desc", "-d", help="Metric description")
+    description: str = typer.Option("", "--desc", "-d", help="Metric description"),
+    domain: str = typer.Option("global", "--domain", "-d", help="Domain namespace (e.g. finance, marketing)")
 ):
-    """Creates or updates a semantic metric."""
+    """Creates or updates a semantic metric in a domain."""
     engine = ContextEngine()
-    engine.save_metric({"name": name, "sql": sql, "description": description})
-    console.print(f"[bold green]✓ Metric saved:[/bold green] [cyan]{name}[/cyan] = `{sql}`")
+    engine.save_metric({"name": name, "sql": sql, "description": description, "domain": domain}, domain=domain)
+    console.print(f"[bold green]✓ Metric saved to {domain}:[/bold green] [cyan]{name}[/cyan] = `{sql}`")
+
+domains_app = typer.Typer(
+    name="domains",
+    help="Manage multi-domain business namespaces.",
+    no_args_is_help=True
+)
+app.add_typer(domains_app, name="domains")
+
+@domains_app.command("list")
+def domains_list():
+    """Lists all available business domains."""
+    engine = ContextEngine()
+    domains = engine.get_domains()
+    table = Table(title="Business Domains", show_header=True, header_style="bold magenta")
+    table.add_column("Domain ID", style="cyan")
+    table.add_column("Name", style="white")
+    table.add_column("Description", style="dim")
+    for d in domains:
+        table.add_row(d["id"], d["name"], d.get("description", "-"))
+    console.print(table)
 
 if __name__ == "__main__":
     app()
