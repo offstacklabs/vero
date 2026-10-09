@@ -16,10 +16,15 @@ class LLMConfig(BaseModel):
     model: str = Field(default="gpt-4o", description="LiteLLM model string (e.g. gpt-4o, claude-3-5-sonnet, ollama/llama3)")
     temperature: float = 0.0
 
+class StorageConfig(BaseModel):
+    backend: str = Field(default="local", description="Context storage backend: 'local' or 'database'")
+    connection_string: Optional[str] = Field(default=None, description="SQLAlchemy connection string for centralized metadata DB (PostgreSQL, Supabase, etc.)")
+
 class VeroConfig(BaseModel):
     version: str = "1.0"
     database: DatabaseConfig = Field(default_factory=DatabaseConfig)
     llm: LLMConfig = Field(default_factory=LLMConfig)
+    storage: StorageConfig = Field(default_factory=StorageConfig)
     context_dir: str = ".vero"
 
     @classmethod

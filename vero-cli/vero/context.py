@@ -4,19 +4,25 @@ import json
 import yaml
 
 from vero.config import VeroConfig
+from vero.storage import (
+    ContextStorage, LocalContextStorage, DatabaseContextStorage
+)
 
 class ContextEngine:
     def __init__(
         self,
         context_dir: Optional[Path] = None,
+        storage: Optional[ContextStorage] = None,
         schemas: Optional[Dict[str, str]] = None,
         rules: Optional[str] = None,
         metrics: Optional[List[Dict[str, Any]]] = None,
         skills: Optional[Dict[str, str]] = None
     ):
         """
-        ContextEngine supports both local filesystem storage (.vero/) and
-        stateless in-memory injection for commercial/multi-tenant cloud deployments.
+        ContextEngine supports:
+        1. Local filesystem storage (.vero/)
+        2. Centralized Database storage (PostgreSQL, Supabase, Cloud SQL) for team/cloud
+        3. Stateless in-memory injection for serverless/multi-tenant microservices
         """
         self._in_memory_schemas = schemas
         self._in_memory_rules = rules
@@ -33,8 +39,18 @@ class ContextEngine:
         self.metrics_file = self.context_dir / "metrics.yaml"
         self.rules_file = self.context_dir / "RULES.md"
 
+        # Initialize pluggable storage
+        if storage is not None:
+            self.storage = storage
+        else:
+            cfg = VeroConfig.load()
+            if cfg.storage.backend in ["database", "postgres", "postgresql"] and cfg.storage.connection_string:
+                self.storage = DatabaseContextStorage(cfg.storage.connection_string)
+            else:
+                self.storage = LocalContextStorage(self.context_dir)
+
     def initialize_workspace(self) -> None:
-        """Initializes the .vero context directories and default rules."""
+        """Initializes the .vero context directories, default rules, and metrics."""
         self.context_dir.mkdir(parents=True, exist_ok=True)
         self.schemas_dir.mkdir(parents=True, exist_ok=True)
         self.skills_dir.mkdir(parents=True, exist_ok=True)
@@ -48,31 +64,62 @@ class ContextEngine:
                 "- Always provide clean aliases for aggregated metrics (e.g. `COUNT(*) AS total_orders`).\n"
                 "- Default to `LIMIT 50` unless otherwise specified by the user.\n"
             )
-            self.rules_file.write_text(default_rules, encoding="utf-8")
+            self.save_rules(default_rules)
             
         if not self.metrics_file.exists():
-            default_metrics = (
-                "metrics:\n"
-                "  - name: active_users\n"
-                "    description: 'Count of users who have logged in within the last 30 days'\n"
-                "    sql: 'COUNT(DISTINCT CASE WHEN last_login_date >= CURRENT_DATE - 30 THEN user_id END)'\n"
-                "  - name: arr\n"
-                "    description: 'Annual Recurring Revenue'\n"
-                "    sql: 'SUM(monthly_subscription_amount * 12)'\n"
-            )
-            self.metrics_file.write_text(default_metrics, encoding="utf-8")
+            default_metrics = [
+                {
+                    "name": "active_users",
+                    "description": "Count of users who have logged in within the last 30 days",
+                    "sql": "COUNT(DISTINCT CASE WHEN last_login_date >= CURRENT_DATE - 30 THEN user_id END)"
+                },
+                {
+                    "name": "arr",
+                    "description": "Annual Recurring Revenue",
+                    "sql": "SUM(monthly_subscription_amount * 12)"
+                }
+            ]
+            for m in default_metrics:
+                self.save_metric(m)
+
+    def get_rules(self) -> str:
+        if self._in_memory_rules is not None:
+            return self._in_memory_rules
+        return self.storage.get_rules()
+
+    def save_rules(self, rules: str) -> None:
+        self.storage.save_rules(rules)
+
+    def append_rule(self, rule: str) -> None:
+        self.storage.append_rule(rule)
+
+    def get_metrics(self) -> List[Dict[str, Any]]:
+        if self._in_memory_metrics is not None:
+            return self._in_memory_metrics
+        return self.storage.get_metrics()
+
+    def save_metric(self, metric: Dict[str, Any]) -> None:
+        self.storage.save_metric(metric)
+
+    def delete_metric(self, name: str) -> bool:
+        return self.storage.delete_metric(name)
+
+    def get_schemas(self) -> Dict[str, str]:
+        if self._in_memory_schemas is not None:
+            return self._in_memory_schemas
+        return self.storage.get_schemas()
+
+    def save_table_annotation(self, table_name: str, annotation: str) -> None:
+        self.storage.save_table_annotation(table_name, annotation)
 
     def sync_schemas(self, schema_info: Dict[str, Any]) -> None:
-        """Converts introspected database schema into readable Markdown context files."""
-        self.schemas_dir.mkdir(parents=True, exist_ok=True)
-
-        # Cleanup old schemas that are no longer in the DB
-        existing_schemas = {p.stem for p in self.schemas_dir.glob("*.md") if p.name != "README.md"}
+        """Converts introspected database schema into readable Markdown and saves to storage."""
+        # Clean old schemas in storage
         current_schemas = set(schema_info.keys())
-        for removed in existing_schemas - current_schemas:
-            (self.schemas_dir / f"{removed}.md").unlink()
+        existing = set(self.storage.get_schemas().keys())
+        for removed in existing - current_schemas:
+            self.storage.delete_schema(removed)
 
-        # Overview file
         overview_lines = [
             "# Database Schema Overview\n",
             "This folder contains the auto-synced schema definition for Vero AI.\n",
@@ -83,7 +130,6 @@ class ContextEngine:
         for table_name, details in schema_info.items():
             overview_lines.append(f"- [{table_name}](./{table_name}.md)")
 
-            # Individual table schema markdown
             table_md = [
                 f"# {'View' if details.get('is_view') else 'Table'}: `{table_name}`\n",
                 "## Columns\n",
@@ -100,31 +146,31 @@ class ContextEngine:
                     fk_referred = ", ".join(fk['referred_columns'])
                     table_md.append(f"- `{fk_constrained}` -> `{fk['referred_table']}({fk_referred})`")
 
-            table_file = self.schemas_dir / f"{table_name}.md"
-            table_file.write_text("\n".join(table_md) + "\n", encoding="utf-8")
+            self.storage.save_schema(table_name, "\n".join(table_md) + "\n")
 
-        (self.schemas_dir / "README.md").write_text("\n".join(overview_lines) + "\n", encoding="utf-8")
+        # Save overview to schemas_dir if local
+        if isinstance(self.storage, LocalContextStorage):
+            (self.schemas_dir / "README.md").write_text("\n".join(overview_lines) + "\n", encoding="utf-8")
 
     def get_full_context_prompt(self, query_hint: Optional[str] = None, max_tables: int = 15) -> str:
-        """Compiles context into a prompt. Optionally filters schemas based on keyword matching."""
+        """Compiles context into an LLM prompt from the active storage provider."""
         context_parts = []
 
         # 1. Rules
-        if self._in_memory_rules is not None:
-            context_parts.append(f"=== RULES & GUIDELINES ===\n{self._in_memory_rules.strip()}\n")
-        elif self.rules_file.exists():
-            context_parts.append(f"=== RULES & GUIDELINES ===\n{self.rules_file.read_text(encoding='utf-8')}\n")
+        rules = self.get_rules()
+        if rules.strip():
+            context_parts.append(f"=== RULES & GUIDELINES ===\n{rules.strip()}\n")
 
         # 2. Semantic Layer / Metrics
-        if self._in_memory_metrics is not None:
-            metrics_yaml = yaml.dump({"metrics": self._in_memory_metrics}, default_flow_style=False)
+        metrics = self.get_metrics()
+        if metrics:
+            metrics_yaml = yaml.dump({"metrics": metrics}, default_flow_style=False)
             context_parts.append(f"=== SEMANTIC LAYER (METRICS) ===\n{metrics_yaml}\n")
-        elif self.metrics_file.exists():
-            context_parts.append(f"=== SEMANTIC LAYER (METRICS) ===\n{self.metrics_file.read_text(encoding='utf-8')}\n")
 
         # 3. Database Schemas
-        if self._in_memory_schemas is not None:
-            table_names = list(self._in_memory_schemas.keys())
+        schemas = self.get_schemas()
+        if schemas:
+            table_names = list(schemas.keys())
             if query_hint and len(table_names) > max_tables:
                 hint_lower = query_hint.lower()
                 scored_tables = []
@@ -136,28 +182,7 @@ class ContextEngine:
                 scored_tables.sort(key=lambda x: (-x[0], x[1]))
                 table_names = [name for score, name in scored_tables[:max_tables]]
 
-            schema_texts = [self._in_memory_schemas[name] for name in sorted(table_names)]
-            if schema_texts:
-                context_parts.append("=== DATABASE SCHEMAS ===\n" + "\n\n".join(schema_texts) + "\n")
-        elif self.schemas_dir.exists():
-            schema_paths = list(self.schemas_dir.glob("*.md"))
-            schema_paths = [p for p in schema_paths if p.name != "README.md"]
-            
-            if query_hint and len(schema_paths) > max_tables:
-                hint_lower = query_hint.lower()
-                scored_paths = []
-                for p in schema_paths:
-                    score = hint_lower.count(p.stem.lower())
-                    if p.stem.lower() in hint_lower.split():
-                        score += 10
-                    scored_paths.append((score, p))
-                
-                scored_paths.sort(key=lambda x: (-x[0], x[1].name))
-                schema_paths = [p for score, p in scored_paths[:max_tables]]
-
-            schema_texts = []
-            for schema_path in sorted(schema_paths):
-                schema_texts.append(schema_path.read_text(encoding="utf-8"))
+            schema_texts = [schemas[name] for name in sorted(table_names)]
             if schema_texts:
                 context_parts.append("=== DATABASE SCHEMAS ===\n" + "\n\n".join(schema_texts) + "\n")
 
