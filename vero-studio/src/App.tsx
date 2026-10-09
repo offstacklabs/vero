@@ -13,7 +13,13 @@ import {
   Play,
   Sun,
   Moon,
-  Loader2
+  Loader2,
+  BookOpen,
+  Plus,
+  Trash2,
+  BookmarkPlus,
+  Save,
+  Check
 } from 'lucide-react';
 import { marked } from 'marked';
 import { ChartVisualizer } from './components/ChartVisualizer';
@@ -71,11 +77,18 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [schemas, setSchemas] = useState<TableEntity[]>([]);
   const [semanticMetrics, setSemanticMetrics] = useState<SemanticMetric[]>([]);
-  const [activeTab, setActiveTab] = useState<'chat' | 'schemas' | 'scratchpad' | 'metrics'>('chat');
+  const [activeTab, setActiveTab] = useState<'chat' | 'schemas' | 'scratchpad' | 'metrics' | 'rules'>('chat');
   const [selectedSchema, setSelectedSchema] = useState<TableEntity | null>(null);
   const [dialect, setDialect] = useState<string>('BigQuery');
   const [syncing, setSyncing] = useState(false);
   const [editorSql, setEditorSql] = useState<string>('SELECT * FROM customers LIMIT 10;');
+  const [rulesText, setRulesText] = useState<string>('');
+  const [rulesSaving, setRulesSaving] = useState(false);
+  const [rulesSavedToast, setRulesSavedToast] = useState(false);
+  const [showAddMetric, setShowAddMetric] = useState(false);
+  const [newMetric, setNewMetric] = useState({ name: '', description: '', sql: '' });
+  const [teachingMsgId, setTeachingMsgId] = useState<string | null>(null);
+  const [teachRuleInput, setTeachRuleInput] = useState<string>('');
   const [theme, setTheme] = useState<'light' | 'dark'>(() => {
     return (localStorage.getItem('vero_theme') as 'light' | 'dark') || 'light';
   });
@@ -129,9 +142,87 @@ export default function App() {
       .catch(() => console.error("Could not fetch metrics"));
   };
 
+  const fetchRules = () => {
+    fetch(`${API_BASE}/api/rules`)
+      .then(res => res.json())
+      .then(data => {
+        if (data.rules !== undefined) setRulesText(data.rules);
+      })
+      .catch(() => console.error("Could not fetch rules"));
+  };
+
+  const handleSaveRules = async () => {
+    setRulesSaving(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/rules`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rules: rulesText })
+      });
+      if (res.ok) {
+        setRulesSavedToast(true);
+        setTimeout(() => setRulesSavedToast(false), 2500);
+      }
+    } catch (err) {
+      alert(`Failed to save rules: ${err}`);
+    } finally {
+      setRulesSaving(false);
+    }
+  };
+
+  const handleCreateMetric = async () => {
+    if (!newMetric.name.trim() || !newMetric.sql.trim()) return;
+    try {
+      const res = await fetch(`${API_BASE}/api/metrics`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newMetric)
+      });
+      if (res.ok) {
+        setNewMetric({ name: '', description: '', sql: '' });
+        setShowAddMetric(false);
+        fetchMetrics();
+      }
+    } catch (err) {
+      alert(`Failed to create metric: ${err}`);
+    }
+  };
+
+  const handleDeleteMetric = async (metricName: string) => {
+    if (!confirm(`Delete metric '${metricName}'?`)) return;
+    try {
+      const res = await fetch(`${API_BASE}/api/metrics/${metricName}`, {
+        method: 'DELETE'
+      });
+      if (res.ok) fetchMetrics();
+    } catch (err) {
+      alert(`Failed to delete metric: ${err}`);
+    }
+  };
+
+  const handleTeachVero = async (ruleText: string) => {
+    if (!ruleText.trim()) return;
+    try {
+      const res = await fetch(`${API_BASE}/api/rules/append`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rule: ruleText })
+      });
+      if (res.ok) {
+        setTeachingMsgId(null);
+        setTeachRuleInput('');
+        fetchRules();
+        alert('Rule saved and remembered by Vero! It will now be used for all future queries.');
+      }
+    } catch (err) {
+      alert(`Failed to save rule: ${err}`);
+    }
+  };
+
   useEffect(() => {
     fetchSchemas();
     fetchMetrics();
+    fetchRules();
     fetchConfig();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -329,6 +420,13 @@ export default function App() {
             <span>Semantic Layer</span>
           </div>
           <div 
+            className={`nav-item ${activeTab === 'rules' ? 'active' : ''}`}
+            onClick={() => setActiveTab('rules')}
+          >
+            <BookOpen size={15} />
+            <span>Rules & Context</span>
+          </div>
+          <div 
             className={`nav-item ${activeTab === 'schemas' ? 'active' : ''}`}
             onClick={() => setActiveTab('schemas')}
           >
@@ -467,6 +565,52 @@ export default function App() {
                     />
                   )}
 
+                  {/* Teach Vero Action */}
+                  {msg.sender === 'assistant' && !msg.is_streaming && (
+                    <div style={{ marginTop: '12px' }}>
+                      {teachingMsgId === msg.id ? (
+                        <div className="teach-vero-dialog">
+                          <BookmarkPlus size={15} color="var(--accent-color)" />
+                          <input
+                            type="text"
+                            className="metric-input"
+                            style={{ flex: 1 }}
+                            placeholder="e.g. Always exclude accounts with status = 'internal'"
+                            value={teachRuleInput}
+                            onChange={e => setTeachRuleInput(e.target.value)}
+                            onKeyDown={e => e.key === 'Enter' && handleTeachVero(teachRuleInput)}
+                          />
+                          <button 
+                            className="save-rules-btn"
+                            style={{ padding: '6px 12px', fontSize: '12px' }}
+                            onClick={() => handleTeachVero(teachRuleInput)}
+                          >
+                            Save Rule
+                          </button>
+                          <button 
+                            className="editor-tool-btn"
+                            style={{ padding: '6px 10px', fontSize: '12px' }}
+                            onClick={() => setTeachingMsgId(null)}
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      ) : (
+                        <button 
+                          className="teach-vero-btn"
+                          onClick={() => {
+                            setTeachingMsgId(msg.id);
+                            setTeachRuleInput('');
+                          }}
+                          title="Save a clarification or convention as a persistent business rule"
+                        >
+                          <BookmarkPlus size={13} />
+                          <span>Teach Vero (Save Rule)</span>
+                        </button>
+                      )}
+                    </div>
+                  )}
+
                   {msg.error && (
                     <div style={{ color: '#f85149', marginTop: '12px', fontSize: '13px' }}>
                       Error: {msg.error}
@@ -513,35 +657,133 @@ export default function App() {
         {/* Semantic Layer Manager Tab */}
         {activeTab === 'metrics' && (
           <div className="metrics-viewer">
-            <h2 style={{ marginBottom: '16px', fontSize: '20px' }}>Semantic Layer (Metrics)</h2>
-            <p style={{ color: 'var(--text-muted)', marginBottom: '24px', fontSize: '14px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+              <h2 style={{ fontSize: '20px' }}>Semantic Layer (Metrics)</h2>
+              <button 
+                className="save-rules-btn"
+                style={{ padding: '6px 12px', fontSize: '12px' }}
+                onClick={() => setShowAddMetric(!showAddMetric)}
+              >
+                <Plus size={14} />
+                <span>{showAddMetric ? 'Cancel' : 'Add Metric'}</span>
+              </button>
+            </div>
+            <p style={{ color: 'var(--text-muted)', marginBottom: '20px', fontSize: '13.5px' }}>
               These business metrics are automatically injected into the agent's context, grounding the LLM in your warehouse logic.
             </p>
+
+            {/* Metric Creator Form */}
+            {showAddMetric && (
+              <div className="metric-create-card">
+                <div style={{ fontWeight: 600, fontSize: '14px', color: 'var(--text-main)' }}>
+                  Define New Semantic Metric
+                </div>
+                <div className="metric-form-grid">
+                  <input
+                    type="text"
+                    className="metric-input"
+                    placeholder="Metric Name (e.g. gross_margin)"
+                    value={newMetric.name}
+                    onChange={e => setNewMetric({ ...newMetric, name: e.target.value })}
+                  />
+                  <input
+                    type="text"
+                    className="metric-input"
+                    placeholder="Description (e.g. Total revenue minus COGS)"
+                    value={newMetric.description}
+                    onChange={e => setNewMetric({ ...newMetric, description: e.target.value })}
+                  />
+                </div>
+                <input
+                  type="text"
+                  className="metric-input"
+                  style={{ fontFamily: 'var(--font-mono)' }}
+                  placeholder="SQL Aggregation (e.g. SUM(revenue - cogs))"
+                  value={newMetric.sql}
+                  onChange={e => setNewMetric({ ...newMetric, sql: e.target.value })}
+                />
+                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
+                  <button 
+                    className="editor-tool-btn" 
+                    onClick={() => setShowAddMetric(false)}
+                  >
+                    Cancel
+                  </button>
+                  <button 
+                    className="save-rules-btn" 
+                    onClick={handleCreateMetric}
+                    disabled={!newMetric.name || !newMetric.sql}
+                  >
+                    Save Metric
+                  </button>
+                </div>
+              </div>
+            )}
+
             {semanticMetrics.length === 0 ? (
-              <div style={{ color: '#8b949e' }}>No metrics defined in .vero/metrics.yaml</div>
+              <div style={{ color: '#8b949e' }}>No metrics defined yet. Click "Add Metric" to define your first business KPI.</div>
             ) : (
               semanticMetrics.map(m => (
                 <div key={m.name} className="semantic-metric-card">
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <div className="semantic-metric-name">{m.name}</div>
-                    <button 
-                      className="sql-action-btn highlight"
-                      onClick={() => {
-                        setEditorSql(`SELECT ${m.sql} AS ${m.name};`);
-                        setActiveTab('scratchpad');
-                      }}
-                    >
-                      <Play size={11} />
-                      <span>Run in Studio</span>
-                    </button>
+                    <div style={{ display: 'flex', gap: '6px' }}>
+                      <button 
+                        className="sql-action-btn highlight"
+                        onClick={() => {
+                          setEditorSql(`SELECT ${m.sql} AS ${m.name};`);
+                          setActiveTab('scratchpad');
+                        }}
+                      >
+                        <Play size={11} />
+                        <span>Run in Studio</span>
+                      </button>
+                      <button 
+                        className="sql-action-btn"
+                        onClick={() => handleDeleteMetric(m.name)}
+                        title="Delete Metric"
+                      >
+                        <Trash2 size={11} color="#f85149" />
+                      </button>
+                    </div>
                   </div>
                   <div className="semantic-metric-desc">{m.description}</div>
-                  <div className="sql-box" style={{ margin: 0, backgroundColor: 'var(--bg-primary)' }}>
+                  <div className="sql-box" style={{ margin: 0, backgroundColor: 'var(--code-bg)' }}>
                     {m.sql}
                   </div>
                 </div>
               ))
             )}
+          </div>
+        )}
+
+        {/* Rules & Guidelines Editor Tab */}
+        {activeTab === 'rules' && (
+          <div className="rules-editor-container">
+            <div className="rules-editor-header">
+              <div>
+                <h2 style={{ fontSize: '20px', color: 'var(--text-main)', marginBottom: '4px' }}>Business Rules & SQL Guidelines</h2>
+                <p style={{ color: 'var(--text-muted)', fontSize: '13px' }}>
+                  Define organization-wide data conventions, fiscal periods, and SQL rules injected into every agent prompt.
+                </p>
+              </div>
+              <button 
+                className="save-rules-btn" 
+                onClick={handleSaveRules}
+                disabled={rulesSaving}
+              >
+                {rulesSavedToast ? <Check size={14} /> : <Save size={14} />}
+                <span>{rulesSavedToast ? 'Saved!' : rulesSaving ? 'Saving...' : 'Save Rules'}</span>
+              </button>
+            </div>
+
+            <textarea 
+              className="rules-textarea"
+              value={rulesText}
+              onChange={e => setRulesText(e.target.value)}
+              placeholder="# Corporate SQL Guidelines&#10;- Always filter out test accounts&#10;- Fiscal year begins in February"
+              spellCheck={false}
+            />
           </div>
         )}
 

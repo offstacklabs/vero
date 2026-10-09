@@ -1045,3 +1045,127 @@ body {
   margin-bottom: 12px;
   color: var(--accent-color);
 }
+
+/* Rules Editor */
+.rules-editor-container {
+  padding: 28px;
+  overflow-y: auto;
+  max-width: 960px;
+  margin: 0 auto;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  height: 100%;
+}
+
+.rules-editor-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.rules-textarea {
+  flex: 1;
+  min-height: 420px;
+  background-color: var(--code-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 20px;
+  color: var(--code-text);
+  font-family: var(--font-mono);
+  font-size: 13.5px;
+  line-height: 1.6;
+  resize: none;
+  outline: none;
+}
+
+.rules-textarea:focus {
+  border-color: var(--accent-color);
+  box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.2);
+}
+
+.save-rules-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--accent-gradient);
+  color: #ffffff;
+  border: none;
+  border-radius: 6px;
+  padding: 8px 16px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.15s ease;
+}
+
+.save-rules-btn:hover {
+  opacity: 0.9;
+}
+
+/* Metric Creator Form */
+.metric-create-card {
+  background-color: var(--bg-secondary);
+  border: 1px solid var(--accent-color);
+  border-radius: 8px;
+  padding: 20px;
+  margin-bottom: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  box-shadow: 0 4px 16px rgba(139, 92, 246, 0.15);
+}
+
+.metric-form-grid {
+  display: grid;
+  grid-template-columns: 1fr 2fr;
+  gap: 12px;
+}
+
+.metric-input {
+  background-color: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  padding: 8px 12px;
+  color: var(--text-main);
+  font-size: 13px;
+  outline: none;
+}
+
+.metric-input:focus {
+  border-color: var(--accent-color);
+}
+
+/* Teach Vero action button */
+.teach-vero-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: transparent;
+  border: 1px dashed var(--border-color);
+  color: var(--text-muted);
+  font-size: 12px;
+  padding: 4px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  margin-top: 10px;
+  transition: all 0.15s ease;
+}
+
+.teach-vero-btn:hover {
+  background: var(--accent-gradient-subtle, var(--bg-tertiary));
+  border-color: var(--accent-color);
+  color: var(--accent-color);
+}
+
+.teach-vero-dialog {
+  margin-top: 10px;
+  padding: 10px 14px;
+  background-color: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
