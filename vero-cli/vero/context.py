@@ -1,11 +1,28 @@
 from pathlib import Path
 from typing import Dict, Any, List, Optional
 import json
+import yaml
 
 from vero.config import VeroConfig
 
 class ContextEngine:
-    def __init__(self, context_dir: Optional[Path] = None):
+    def __init__(
+        self,
+        context_dir: Optional[Path] = None,
+        schemas: Optional[Dict[str, str]] = None,
+        rules: Optional[str] = None,
+        metrics: Optional[List[Dict[str, Any]]] = None,
+        skills: Optional[Dict[str, str]] = None
+    ):
+        """
+        ContextEngine supports both local filesystem storage (.vero/) and
+        stateless in-memory injection for commercial/multi-tenant cloud deployments.
+        """
+        self._in_memory_schemas = schemas
+        self._in_memory_rules = rules
+        self._in_memory_metrics = metrics
+        self._in_memory_skills = skills
+
         if context_dir is None:
             self.context_dir = VeroConfig.get_workspace_root() / ".vero"
         else:
@@ -89,32 +106,52 @@ class ContextEngine:
         (self.schemas_dir / "README.md").write_text("\n".join(overview_lines) + "\n", encoding="utf-8")
 
     def get_full_context_prompt(self, query_hint: Optional[str] = None, max_tables: int = 15) -> str:
-        """Compiles context into a prompt. Optionally filters schemas based on naive keyword matching to save tokens."""
+        """Compiles context into a prompt. Optionally filters schemas based on keyword matching."""
         context_parts = []
 
-        if self.rules_file.exists():
+        # 1. Rules
+        if self._in_memory_rules is not None:
+            context_parts.append(f"=== RULES & GUIDELINES ===\n{self._in_memory_rules.strip()}\n")
+        elif self.rules_file.exists():
             context_parts.append(f"=== RULES & GUIDELINES ===\n{self.rules_file.read_text(encoding='utf-8')}\n")
 
-        if self.metrics_file.exists():
+        # 2. Semantic Layer / Metrics
+        if self._in_memory_metrics is not None:
+            metrics_yaml = yaml.dump({"metrics": self._in_memory_metrics}, default_flow_style=False)
+            context_parts.append(f"=== SEMANTIC LAYER (METRICS) ===\n{metrics_yaml}\n")
+        elif self.metrics_file.exists():
             context_parts.append(f"=== SEMANTIC LAYER (METRICS) ===\n{self.metrics_file.read_text(encoding='utf-8')}\n")
 
-        if self.schemas_dir.exists():
+        # 3. Database Schemas
+        if self._in_memory_schemas is not None:
+            table_names = list(self._in_memory_schemas.keys())
+            if query_hint and len(table_names) > max_tables:
+                hint_lower = query_hint.lower()
+                scored_tables = []
+                for name in table_names:
+                    score = hint_lower.count(name.lower())
+                    if name.lower() in hint_lower.split():
+                        score += 10
+                    scored_tables.append((score, name))
+                scored_tables.sort(key=lambda x: (-x[0], x[1]))
+                table_names = [name for score, name in scored_tables[:max_tables]]
+
+            schema_texts = [self._in_memory_schemas[name] for name in sorted(table_names)]
+            if schema_texts:
+                context_parts.append("=== DATABASE SCHEMAS ===\n" + "\n\n".join(schema_texts) + "\n")
+        elif self.schemas_dir.exists():
             schema_paths = list(self.schemas_dir.glob("*.md"))
             schema_paths = [p for p in schema_paths if p.name != "README.md"]
             
-            # Simple keyword matching for pruning if a hint is provided
             if query_hint and len(schema_paths) > max_tables:
                 hint_lower = query_hint.lower()
-                # Score tables by occurrence in the query hint
                 scored_paths = []
                 for p in schema_paths:
                     score = hint_lower.count(p.stem.lower())
-                    # Boost score if table name is exact match or very likely relevant
                     if p.stem.lower() in hint_lower.split():
                         score += 10
                     scored_paths.append((score, p))
                 
-                # Sort by score descending, then fallback to alphabetical to be deterministic
                 scored_paths.sort(key=lambda x: (-x[0], x[1].name))
                 schema_paths = [p for score, p in scored_paths[:max_tables]]
 
@@ -124,7 +161,12 @@ class ContextEngine:
             if schema_texts:
                 context_parts.append("=== DATABASE SCHEMAS ===\n" + "\n\n".join(schema_texts) + "\n")
 
-        if self.skills_dir.exists():
+        # 4. Domain Skills
+        if self._in_memory_skills is not None:
+            skills_texts = [self._in_memory_skills[k] for k in sorted(self._in_memory_skills.keys())]
+            if skills_texts:
+                context_parts.append("=== DOMAIN SKILLS ===\n" + "\n\n".join(skills_texts) + "\n")
+        elif self.skills_dir.exists():
             skills_texts = []
             for skill_path in sorted(self.skills_dir.glob("*.md")):
                 skills_texts.append(skill_path.read_text(encoding="utf-8"))
