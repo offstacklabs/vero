@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Play, RotateCcw, Copy, Check, Table as TableIcon, BarChart3, Clock, Layers } from 'lucide-react';
 import { DataTable } from './DataTable';
 import { ChartVisualizer } from './ChartVisualizer';
@@ -17,16 +17,16 @@ export const SqlEditor: React.FC<SqlEditorProps> = ({
   loading
 }) => {
   const [sql, setSql] = useState(initialSql);
+  const [prevInitialSql, setPrevInitialSql] = useState(initialSql);
   const [copied, setCopied] = useState(false);
   const [result, setResult] = useState<any>(null);
   const [duration, setDuration] = useState<number | null>(null);
   const [viewMode, setViewMode] = useState<'table' | 'chart'>('table');
 
-  useEffect(() => {
-    if (initialSql) {
-      setSql(initialSql);
-    }
-  }, [initialSql]);
+  if (initialSql !== prevInitialSql) {
+    setPrevInitialSql(initialSql);
+    setSql(initialSql);
+  }
 
   const handleRun = async () => {
     if (!sql.trim() || loading) return;
