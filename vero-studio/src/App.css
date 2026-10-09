@@ -288,3 +288,76 @@
   opacity: 0.5;
   cursor: not-allowed;
 }
+
+/* Scratchpad */
+.scratchpad-container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  padding: 24px;
+  gap: 16px;
+}
+
+.scratchpad-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-main);
+}
+
+.sql-editor {
+  flex: 1;
+  background-color: var(--code-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  padding: 16px;
+  font-family: var(--font-mono);
+  font-size: 14px;
+  color: #79c0ff;
+  resize: none;
+  outline: none;
+}
+
+.sql-editor:focus {
+  border-color: var(--accent-color);
+}
+
+.scratchpad-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+/* Markdown tables in schema viewer */
+.schema-viewer {
+  padding: 24px;
+  overflow-y: auto;
+}
+
+.schema-viewer table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 16px;
+  font-size: 13px;
+  text-align: left;
+}
+
+.schema-viewer th {
+  background-color: var(--bg-tertiary);
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border-color);
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.schema-viewer td {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.schema-viewer h1, .schema-viewer h2 {
+  margin-top: 24px;
+  margin-bottom: 12px;
+  color: var(--text-main);
+}

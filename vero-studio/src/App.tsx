@@ -7,17 +7,13 @@ import {
   Sparkles,
   Bot,
   User,
-  FileText
+  FileText,
+  TerminalSquare,
+  RefreshCw
 } from 'lucide-react';
-import { 
-  BarChart, 
-  Bar, 
-  XAxis, 
-  YAxis, 
-  Tooltip, 
-  ResponsiveContainer,
-  CartesianGrid 
-} from 'recharts';
+import { marked } from 'marked';
+import { ChartVisualizer } from './components/ChartVisualizer';
+import { Scratchpad } from './components/Scratchpad';
 
 interface Schema {
   table: string;
@@ -50,26 +46,57 @@ export default function App() {
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [schemas, setSchemas] = useState<Schema[]>([]);
-  const [activeTab, setActiveTab] = useState<'chat' | 'schemas'>('chat');
+  const [activeTab, setActiveTab] = useState<'chat' | 'schemas' | 'scratchpad'>('chat');
   const [selectedSchema, setSelectedSchema] = useState<Schema | null>(null);
+  const [dialect, setDialect] = useState<string>('sqlite');
+  const [syncing, setSyncing] = useState(false);
 
-  useEffect(() => {
+  const fetchConfig = () => {
+    fetch('http://127.0.0.1:8000/api/config')
+      .then(res => res.json())
+      .then(data => {
+        if (data.database && data.database.dialect) {
+          setDialect(data.database.dialect);
+        }
+      })
+      .catch(() => console.error("Could not fetch config"));
+  };
+
+  const fetchSchemas = () => {
     fetch('http://127.0.0.1:8000/api/schemas')
       .then(res => res.json())
       .then(data => {
         if (data.schemas) {
           setSchemas(data.schemas);
-          if (data.schemas.length > 0) setSelectedSchema(data.schemas[0]);
+          if (data.schemas.length > 0 && !selectedSchema) setSelectedSchema(data.schemas[0]);
         }
       })
       .catch(() => {
-        // Fallback demo schemas if server is offline
+        // Fallback demo schemas
         setSchemas([
-          { table: 'customers', content: '# Table: customers\n\n- id (INTEGER)\n- name (TEXT)\n- email (TEXT)\n- plan (TEXT)' },
-          { table: 'orders', content: '# Table: orders\n\n- id (INTEGER)\n- customer_id (INTEGER)\n- amount (REAL)\n- status (TEXT)' }
+          { table: 'customers', content: '# Table: customers\n\n- id (INTEGER)\n- name (TEXT)' },
+          { table: 'orders', content: '# Table: orders\n\n- id (INTEGER)\n- customer_id (INTEGER)' }
         ]);
       });
+  };
+
+  useEffect(() => {
+    fetchSchemas();
+    fetchConfig();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const handleSyncSchemas = async () => {
+    setSyncing(true);
+    try {
+      await fetch('http://127.0.0.1:8000/api/sync', { method: 'POST' });
+      fetchSchemas();
+    } catch (err) {
+      console.error("Failed to sync schemas:", err);
+    } finally {
+      setSyncing(false);
+    }
+  };
 
   const handleSend = async () => {
     if (!input.trim() || loading) return;
@@ -108,36 +135,44 @@ export default function App() {
 
       setMessages(prev => [...prev, assistantMessage]);
     } catch (err) {
-      // Offline fallback simulation
-      const fallbackMessage: Message = {
+      setMessages(prev => [...prev, {
         id: (Date.now() + 1).toString(),
         sender: 'assistant',
-        text: `Analyzed: "${currentInput}". Below is the generated query and results.`,
-        thought: "Filter orders by status = 'completed' and aggregate total revenue per customer.",
-        sql: "SELECT c.name, SUM(o.amount) AS total_revenue\nFROM customers c\nJOIN orders o ON c.id = o.customer_id\nWHERE o.status = 'completed'\nGROUP BY c.name\nORDER BY total_revenue DESC;",
-        data: {
-          columns: ['name', 'total_revenue'],
-          rows: [
-            ['Alice Smith', 3600.00],
-            ['Bob Jones', 450.00],
-            ['Diana Prince', 399.00]
-          ],
-          row_count: 3
-        },
-        suggested_visualization: 'bar'
-      };
-      setMessages(prev => [...prev, fallbackMessage]);
+        text: `Error connecting to the Vero agent server.`,
+        error: String(err)
+      }]);
     } finally {
       setLoading(false);
     }
   };
 
-  const formatChartData = (data: Message['data']) => {
-    if (!data || data.rows.length === 0 || data.columns.length < 2) return [];
-    return data.rows.map(row => ({
-      name: String(row[0]),
-      value: Number(row[1]) || 0
-    }));
+  const handleRunScratchpad = async (sql: string) => {
+    setLoading(true);
+    try {
+      const response = await fetch('http://127.0.0.1:8000/api/query', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sql })
+      });
+      const data = await response.json();
+      
+      if (!response.ok) throw new Error(data.detail || 'Execution failed');
+      
+      const resMessage: Message = {
+        id: Date.now().toString(),
+        sender: 'assistant',
+        text: 'Executed scratchpad query:',
+        sql: sql,
+        data: data.data
+      };
+      
+      setMessages(prev => [...prev, resMessage]);
+      setActiveTab('chat');
+    } catch (err) {
+      alert(`Error executing query: ${err}`);
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -158,6 +193,13 @@ export default function App() {
             <span>Chat & Explore</span>
           </div>
           <div 
+            className={`nav-item ${activeTab === 'scratchpad' ? 'active' : ''}`}
+            onClick={() => setActiveTab('scratchpad')}
+          >
+            <TerminalSquare size={16} />
+            <span>SQL Scratchpad</span>
+          </div>
+          <div 
             className={`nav-item ${activeTab === 'schemas' ? 'active' : ''}`}
             onClick={() => setActiveTab('schemas')}
           >
@@ -167,11 +209,19 @@ export default function App() {
         </nav>
 
         <div className="schemas-section">
-          <span className="section-label">Warehouse Tables ({schemas.length})</span>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+            <span className="section-label" style={{ marginBottom: 0 }}>Warehouse Entities ({schemas.length})</span>
+            <RefreshCw 
+              size={12} 
+              color="#8b949e" 
+              style={{ cursor: 'pointer', animation: syncing ? 'spin 1s linear infinite' : 'none' }}
+              onClick={handleSyncSchemas}
+            />
+          </div>
           {schemas.map(s => (
             <div 
               key={s.table} 
-              className="schema-item"
+              className={`schema-item ${selectedSchema?.table === s.table && activeTab === 'schemas' ? 'active' : ''}`}
               onClick={() => {
                 setSelectedSchema(s);
                 setActiveTab('schemas');
@@ -193,11 +243,11 @@ export default function App() {
           </div>
           <div className="status-pill">
             <Sparkles size={14} color="#58a6ff" />
-            <span>Dialect: SQLite / DuckDB</span>
+            <span>Dialect: {dialect}</span>
           </div>
         </header>
 
-        {activeTab === 'chat' ? (
+        {activeTab === 'chat' && (
           <>
             <div className="chat-container">
               {messages.map(msg => (
@@ -247,20 +297,12 @@ export default function App() {
                     </div>
                   )}
 
-                  {msg.suggested_visualization === 'bar' && msg.data && (
+                  {msg.suggested_visualization && msg.suggested_visualization !== 'table' && msg.data && (
                     <div className="chart-container">
                       <div style={{ fontSize: '12px', color: '#8b949e', marginBottom: '12px' }}>
-                        Data Visualization (Bar Chart)
+                        Data Visualization ({msg.suggested_visualization})
                       </div>
-                      <ResponsiveContainer width="100%" height={240}>
-                        <BarChart data={formatChartData(msg.data)}>
-                          <CartesianGrid strokeDasharray="3 3" stroke="#30363d" />
-                          <XAxis dataKey="name" stroke="#8b949e" />
-                          <YAxis stroke="#8b949e" />
-                          <Tooltip contentStyle={{ backgroundColor: '#161b22', borderColor: '#30363d' }} />
-                          <Bar dataKey="value" fill="#58a6ff" radius={[4, 4, 0, 0]} />
-                        </BarChart>
-                      </ResponsiveContainer>
+                      <ChartVisualizer type={msg.suggested_visualization} data={msg.data} />
                     </div>
                   )}
 
@@ -295,14 +337,19 @@ export default function App() {
               </div>
             </div>
           </>
-        ) : (
-          <div style={{ padding: '24px', overflowY: 'auto' }}>
-            <h2 style={{ marginBottom: '16px', fontSize: '20px' }}>
-              {selectedSchema ? `Schema: ${selectedSchema.table}` : 'Database Schemas'}
-            </h2>
-            <div className="sql-box" style={{ whiteSpace: 'pre-wrap' }}>
-              {selectedSchema?.content || 'Select a schema on the sidebar to view details.'}
-            </div>
+        )}
+
+        {activeTab === 'scratchpad' && (
+          <Scratchpad onExecute={handleRunScratchpad} loading={loading} />
+        )}
+
+        {activeTab === 'schemas' && (
+          <div className="schema-viewer">
+            {selectedSchema ? (
+              <div dangerouslySetInnerHTML={{ __html: marked(selectedSchema.content) as string }} />
+            ) : (
+              <div style={{ color: '#8b949e' }}>Select a schema on the sidebar to view details.</div>
+            )}
           </div>
         )}
       </main>
