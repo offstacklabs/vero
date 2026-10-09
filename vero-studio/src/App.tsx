@@ -19,7 +19,8 @@ import {
   Trash2,
   BookmarkPlus,
   Save,
-  Check
+  Check,
+  Layers
 } from 'lucide-react';
 import { marked } from 'marked';
 import { ChartVisualizer } from './components/ChartVisualizer';
@@ -31,10 +32,17 @@ import { PromptChips } from './components/PromptChips';
 import { SqlCard } from './components/SqlCard';
 import { SchemaTree, type TableEntity } from './components/SchemaTree';
 
+interface DomainInfo {
+  id: string;
+  name: string;
+  description: string;
+}
+
 interface SemanticMetric {
   name: string;
   description: string;
   sql: string;
+  domain?: string;
 }
 
 interface Message {
@@ -82,11 +90,18 @@ export default function App() {
   const [dialect, setDialect] = useState<string>('BigQuery');
   const [syncing, setSyncing] = useState(false);
   const [editorSql, setEditorSql] = useState<string>('SELECT * FROM customers LIMIT 10;');
+  const [domains, setDomains] = useState<DomainInfo[]>([
+    { id: 'global', name: 'Global (Shared)', description: 'Enterprise-wide' },
+    { id: 'finance', name: 'Finance', description: 'Revenue & accounting' },
+    { id: 'marketing', name: 'Marketing', description: 'Attribution & spend' },
+    { id: 'product', name: 'Product', description: 'Engagement & retention' }
+  ]);
+  const [selectedDomain, setSelectedDomain] = useState<string>('global');
   const [rulesText, setRulesText] = useState<string>('');
   const [rulesSaving, setRulesSaving] = useState(false);
   const [rulesSavedToast, setRulesSavedToast] = useState(false);
   const [showAddMetric, setShowAddMetric] = useState(false);
-  const [newMetric, setNewMetric] = useState({ name: '', description: '', sql: '' });
+  const [newMetric, setNewMetric] = useState({ name: '', description: '', sql: '', domain: 'global' });
   const [teachingMsgId, setTeachingMsgId] = useState<string | null>(null);
   const [teachRuleInput, setTeachRuleInput] = useState<string>('');
   const [theme, setTheme] = useState<'light' | 'dark'>(() => {
@@ -114,8 +129,18 @@ export default function App() {
       .catch(() => console.error("Could not fetch config"));
   };
 
-  const fetchSchemas = () => {
-    fetch(`${API_BASE}/api/schemas`)
+  const fetchDomains = () => {
+    fetch(`${API_BASE}/api/domains`)
+      .then(res => res.json())
+      .then(data => {
+        if (data.domains && data.domains.length > 0) setDomains(data.domains);
+      })
+      .catch(() => console.error("Could not fetch domains"));
+  };
+
+  const fetchSchemas = (domain = selectedDomain) => {
+    const url = domain ? `${API_BASE}/api/schemas?domain=${domain}` : `${API_BASE}/api/schemas`;
+    fetch(url)
       .then(res => res.json())
       .then(data => {
         if (data.schemas) {
@@ -131,8 +156,9 @@ export default function App() {
       });
   };
 
-  const fetchMetrics = () => {
-    fetch(`${API_BASE}/api/metrics`)
+  const fetchMetrics = (domain = selectedDomain) => {
+    const url = domain ? `${API_BASE}/api/metrics?domain=${domain}` : `${API_BASE}/api/metrics`;
+    fetch(url)
       .then(res => res.json())
       .then(data => {
         if (data.metrics) {
@@ -142,8 +168,9 @@ export default function App() {
       .catch(() => console.error("Could not fetch metrics"));
   };
 
-  const fetchRules = () => {
-    fetch(`${API_BASE}/api/rules`)
+  const fetchRules = (domain = selectedDomain) => {
+    const url = domain ? `${API_BASE}/api/rules?domain=${domain}` : `${API_BASE}/api/rules`;
+    fetch(url)
       .then(res => res.json())
       .then(data => {
         if (data.rules !== undefined) setRulesText(data.rules);
@@ -157,7 +184,7 @@ export default function App() {
       const res = await fetch(`${API_BASE}/api/rules`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ rules: rulesText })
+        body: JSON.stringify({ rules: rulesText, domain: selectedDomain })
       });
       if (res.ok) {
         setRulesSavedToast(true);
@@ -176,12 +203,15 @@ export default function App() {
       const res = await fetch(`${API_BASE}/api/metrics`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(newMetric)
+        body: JSON.stringify({
+          ...newMetric,
+          domain: newMetric.domain || selectedDomain
+        })
       });
       if (res.ok) {
-        setNewMetric({ name: '', description: '', sql: '' });
+        setNewMetric({ name: '', description: '', sql: '', domain: selectedDomain });
         setShowAddMetric(false);
-        fetchMetrics();
+        fetchMetrics(selectedDomain);
       }
     } catch (err) {
       alert(`Failed to create metric: ${err}`);
@@ -189,12 +219,12 @@ export default function App() {
   };
 
   const handleDeleteMetric = async (metricName: string) => {
-    if (!confirm(`Delete metric '${metricName}'?`)) return;
+    if (!confirm(`Delete metric '${metricName}' in domain '${selectedDomain}'?`)) return;
     try {
-      const res = await fetch(`${API_BASE}/api/metrics/${metricName}`, {
+      const res = await fetch(`${API_BASE}/api/metrics/${metricName}?domain=${selectedDomain}`, {
         method: 'DELETE'
       });
-      if (res.ok) fetchMetrics();
+      if (res.ok) fetchMetrics(selectedDomain);
     } catch (err) {
       alert(`Failed to delete metric: ${err}`);
     }
@@ -206,13 +236,13 @@ export default function App() {
       const res = await fetch(`${API_BASE}/api/rules/append`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ rule: ruleText })
+        body: JSON.stringify({ rule: ruleText, domain: selectedDomain })
       });
       if (res.ok) {
         setTeachingMsgId(null);
         setTeachRuleInput('');
-        fetchRules();
-        alert('Rule saved and remembered by Vero! It will now be used for all future queries.');
+        fetchRules(selectedDomain);
+        alert(`Rule saved for domain '${selectedDomain}'! It will now be used for future queries.`);
       }
     } catch (err) {
       alert(`Failed to save rule: ${err}`);
@@ -220,12 +250,16 @@ export default function App() {
   };
 
   useEffect(() => {
-    fetchSchemas();
-    fetchMetrics();
-    fetchRules();
+    fetchDomains();
     fetchConfig();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    fetchSchemas(selectedDomain);
+    fetchMetrics(selectedDomain);
+    fetchRules(selectedDomain);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedDomain]);
 
   const handleSyncSchemas = async () => {
     setSyncing(true);
@@ -265,7 +299,7 @@ export default function App() {
       const response = await fetch(`${API_BASE}/api/chat/stream`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ question: textToSend, execute: true })
+        body: JSON.stringify({ question: textToSend, execute: true, domain: selectedDomain })
       });
 
       if (!response.ok) throw new Error('Streaming API request failed');
@@ -464,9 +498,21 @@ export default function App() {
       <main className="main-area">
         <header className="top-bar">
           <div className="top-bar-left">
+            <div className="domain-selector-wrapper" title="Filter context by business domain">
+              <Layers size={13} color="var(--accent-color)" />
+              <select
+                className="domain-select"
+                value={selectedDomain}
+                onChange={e => setSelectedDomain(e.target.value)}
+              >
+                {domains.map(d => (
+                  <option key={d.id} value={d.id}>{d.name}</option>
+                ))}
+              </select>
+            </div>
             <div className="status-pill">
               <span className="status-dot"></span>
-              <span>Agent Status: Connected</span>
+              <span>Agent: Connected</span>
             </div>
             <div className="status-pill">
               <Sparkles size={14} color="var(--accent-color)" />
@@ -686,14 +732,23 @@ export default function App() {
                     value={newMetric.name}
                     onChange={e => setNewMetric({ ...newMetric, name: e.target.value })}
                   />
-                  <input
-                    type="text"
+                  <select
                     className="metric-input"
-                    placeholder="Description (e.g. Total revenue minus COGS)"
-                    value={newMetric.description}
-                    onChange={e => setNewMetric({ ...newMetric, description: e.target.value })}
-                  />
+                    value={newMetric.domain || selectedDomain}
+                    onChange={e => setNewMetric({ ...newMetric, domain: e.target.value })}
+                  >
+                    {domains.map(d => (
+                      <option key={d.id} value={d.id}>Domain: {d.name}</option>
+                    ))}
+                  </select>
                 </div>
+                <input
+                  type="text"
+                  className="metric-input"
+                  placeholder="Description (e.g. Total revenue minus COGS)"
+                  value={newMetric.description}
+                  onChange={e => setNewMetric({ ...newMetric, description: e.target.value })}
+                />
                 <input
                   type="text"
                   className="metric-input"
@@ -724,9 +779,12 @@ export default function App() {
               <div style={{ color: '#8b949e' }}>No metrics defined yet. Click "Add Metric" to define your first business KPI.</div>
             ) : (
               semanticMetrics.map(m => (
-                <div key={m.name} className="semantic-metric-card">
+                <div key={`${m.name}-${m.domain || 'global'}`} className="semantic-metric-card">
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <div className="semantic-metric-name">{m.name}</div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <div className="semantic-metric-name">{m.name}</div>
+                      <span className="column-type-badge">{m.domain || 'global'}</span>
+                    </div>
                     <div style={{ display: 'flex', gap: '6px' }}>
                       <button 
                         className="sql-action-btn highlight"

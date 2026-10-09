@@ -345,6 +345,37 @@ body {
   border-color: var(--accent-color);
 }
 
+.domain-selector-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background-color: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  padding: 4px 12px;
+  border-radius: 20px;
+  transition: all 0.15s ease;
+}
+
+.domain-selector-wrapper:hover {
+  border-color: var(--accent-color);
+}
+
+.domain-select {
+  background: transparent;
+  border: none;
+  outline: none;
+  color: var(--text-main);
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  padding-right: 4px;
+}
+
+.domain-select option {
+  background-color: var(--bg-secondary);
+  color: var(--text-main);
+}
+
 /* Chat View */
 .chat-container {
   flex: 1;
