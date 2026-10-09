@@ -1,7 +1,7 @@
 version: '1.0'
 database:
-  dialect: sqlite
-  connection_string: sqlite:///vero_sample.db
+  dialect: postgres
+  connection_string: postgresql://user:password@localhost:5432/vero_db
 llm:
   model: gpt-4o
   temperature: 0.0

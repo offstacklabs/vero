@@ -13,6 +13,7 @@ class ContextEngine:
             
         self.schemas_dir = self.context_dir / "schemas"
         self.skills_dir = self.context_dir / "skills"
+        self.metrics_file = self.context_dir / "metrics.yaml"
         self.rules_file = self.context_dir / "RULES.md"
 
     def initialize_workspace(self) -> None:
@@ -28,11 +29,21 @@ class ContextEngine:
                 "- Always use explicit column names instead of `SELECT *`.\n"
                 "- For date filtering, prefer standard ISO dates (`YYYY-MM-DD`).\n"
                 "- Always provide clean aliases for aggregated metrics (e.g. `COUNT(*) AS total_orders`).\n"
-                "- Default to `LIMIT 50` unless otherwise specified by the user.\n\n"
-                "## Business Context\n"
-                "- Active users are defined as users with `status = 'active'` who have logged in within the last 30 days.\n"
+                "- Default to `LIMIT 50` unless otherwise specified by the user.\n"
             )
             self.rules_file.write_text(default_rules, encoding="utf-8")
+            
+        if not self.metrics_file.exists():
+            default_metrics = (
+                "metrics:\n"
+                "  - name: active_users\n"
+                "    description: 'Count of users who have logged in within the last 30 days'\n"
+                "    sql: 'COUNT(DISTINCT CASE WHEN last_login_date >= CURRENT_DATE - 30 THEN user_id END)'\n"
+                "  - name: arr\n"
+                "    description: 'Annual Recurring Revenue'\n"
+                "    sql: 'SUM(monthly_subscription_amount * 12)'\n"
+            )
+            self.metrics_file.write_text(default_metrics, encoding="utf-8")
 
     def sync_schemas(self, schema_info: Dict[str, Any]) -> None:
         """Converts introspected database schema into readable Markdown context files."""
@@ -83,6 +94,9 @@ class ContextEngine:
 
         if self.rules_file.exists():
             context_parts.append(f"=== RULES & GUIDELINES ===\n{self.rules_file.read_text(encoding='utf-8')}\n")
+
+        if self.metrics_file.exists():
+            context_parts.append(f"=== SEMANTIC LAYER (METRICS) ===\n{self.metrics_file.read_text(encoding='utf-8')}\n")
 
         if self.schemas_dir.exists():
             schema_paths = list(self.schemas_dir.glob("*.md"))

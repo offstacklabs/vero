@@ -63,12 +63,26 @@ def sync_schemas():
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+import yaml
+
 @app.get("/api/rules")
 def get_rules():
     engine = ContextEngine()
     if engine.rules_file.exists():
         return {"rules": engine.rules_file.read_text(encoding="utf-8")}
     return {"rules": ""}
+
+@app.get("/api/metrics")
+def get_metrics():
+    engine = ContextEngine()
+    if engine.metrics_file.exists():
+        try:
+            with open(engine.metrics_file, 'r', encoding="utf-8") as f:
+                data = yaml.safe_load(f)
+                return {"metrics": data.get("metrics", [])}
+        except Exception:
+            return {"metrics": []}
+    return {"metrics": []}
 
 @app.post("/api/chat")
 def chat(req: ChatRequest):

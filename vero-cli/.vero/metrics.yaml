@@ -1,0 +1,7 @@
+metrics:
+  - name: active_users
+    description: 'Count of users who have logged in within the last 30 days'
+    sql: 'COUNT(DISTINCT CASE WHEN last_login_date >= CURRENT_DATE - 30 THEN user_id END)'
+  - name: arr
+    description: 'Annual Recurring Revenue'
+    sql: 'SUM(monthly_subscription_amount * 12)'
