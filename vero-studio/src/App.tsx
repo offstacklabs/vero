@@ -37,6 +37,7 @@ interface Message {
   tables_used?: string[];
   suggested_followups?: string[];
   duration_ms?: number;
+  reflection_steps?: { attempt: number; failed_sql: string; error: string; thought?: string }[];
   data?: {
     columns: string[];
     rows: any[][];
@@ -160,6 +161,7 @@ export default function App() {
         tables_used: data.tables_used,
         suggested_followups: data.suggested_followups,
         duration_ms: data.duration_ms,
+        reflection_steps: data.reflection_steps,
         data: data.data,
         suggested_visualization: data.suggested_visualization,
         error: data.error
@@ -331,6 +333,7 @@ export default function App() {
                       tablesUsed={msg.tables_used}
                       durationMs={msg.duration_ms}
                       dialect={dialect}
+                      reflectionSteps={msg.reflection_steps}
                     />
                   )}
 

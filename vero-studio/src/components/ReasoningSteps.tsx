@@ -1,22 +1,31 @@
 import React, { useState } from 'react';
-import { ChevronDown, ChevronRight, CheckCircle2, Database, Clock, Brain } from 'lucide-react';
+import { ChevronDown, ChevronRight, CheckCircle2, Database, Clock, Brain, Wrench, AlertTriangle } from 'lucide-react';
+
+export interface ReflectionStep {
+  attempt: number;
+  failed_sql: string;
+  error: string;
+  thought?: string;
+}
 
 interface ReasoningStepsProps {
   thought?: string;
   tablesUsed?: string[];
   durationMs?: number;
   dialect?: string;
+  reflectionSteps?: ReflectionStep[];
 }
 
 export const ReasoningSteps: React.FC<ReasoningStepsProps> = ({
   thought,
   tablesUsed = [],
   durationMs,
-  dialect = 'Postgres'
+  dialect = 'Postgres',
+  reflectionSteps = []
 }) => {
   const [expanded, setExpanded] = useState(false);
 
-  if (!thought && (!tablesUsed || tablesUsed.length === 0)) return null;
+  if (!thought && (!tablesUsed || tablesUsed.length === 0) && reflectionSteps.length === 0) return null;
 
   return (
     <div className="reasoning-trace-card">
@@ -28,6 +37,12 @@ export const ReasoningSteps: React.FC<ReasoningStepsProps> = ({
         </div>
 
         <div className="reasoning-badges">
+          {reflectionSteps && reflectionSteps.length > 0 && (
+            <span className="trace-pill" style={{ color: '#f59e0b', borderColor: 'rgba(245, 158, 11, 0.3)', backgroundColor: 'rgba(245, 158, 11, 0.1)' }}>
+              <Wrench size={11} />
+              <span>Self-Healed ({reflectionSteps.length})</span>
+            </span>
+          )}
           {tablesUsed && tablesUsed.length > 0 && (
             <span className="trace-pill">
               <Database size={11} />
@@ -58,6 +73,24 @@ export const ReasoningSteps: React.FC<ReasoningStepsProps> = ({
               </div>
             </div>
           </div>
+
+          {reflectionSteps && reflectionSteps.map((step) => (
+            <div key={step.attempt} className="trace-step" style={{ borderLeft: '2px dashed #f59e0b', paddingLeft: '8px' }}>
+              <div className="step-dot" style={{ backgroundColor: '#f59e0b' }}></div>
+              <div className="step-body">
+                <div className="step-label" style={{ color: '#f59e0b', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  <AlertTriangle size={12} />
+                  <span>Attempt {step.attempt} Intercepted & Repaired</span>
+                </div>
+                <div className="step-desc" style={{ color: '#fca5a5', fontFamily: 'var(--font-mono)', fontSize: '11.5px', marginTop: '2px' }}>
+                  {step.error}
+                </div>
+                <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '4px', fontStyle: 'italic' }}>
+                  Action: Compiler error fed back to agent reflexion loop.
+                </div>
+              </div>
+            </div>
+          ))}
 
           {thought && (
             <div className="trace-step">
