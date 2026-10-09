@@ -17,7 +17,7 @@ from vero.mcp import run_mcp_server
 
 app = typer.Typer(
     name="vero",
-    help="Vero: Open-Source Headless Analytics Agent Framework (Cursor for Data)",
+    help="Vero: Open-Source Headless Analytics Agent Framework & AI Data Workspace",
     add_completion=False
 )
 console = Console()
@@ -164,7 +164,7 @@ def chat():
 
 @app.command()
 def mcp(transport: str = typer.Option("stdio", "--transport", "-t", help="stdio or sse")):
-    """Starts the Vero Model Context Protocol (MCP) server for Cursor/Claude."""
+    """Starts the Vero Model Context Protocol (MCP) server for any MCP client (Claude, Cursor, Zed, Windsurf, custom agents)."""
     run_mcp_server(transport=transport)
 
 @app.command()

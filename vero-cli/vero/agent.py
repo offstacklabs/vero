@@ -28,7 +28,7 @@ class VeroAgent:
         dialect = self.config.database.dialect
 
         system_prompt = (
-            f"You are Vero, an expert AI analytics engineer and 'Cursor for Data'.\n"
+            f"You are Vero, an expert AI analytics engineer and headless data intelligence agent.\n"
             f"Your database dialect is: {dialect}.\n"
             f"You must translate business questions into accurate, high-performance, and safe SQL queries.\n\n"
             f"Context:\n{context}\n\n"
@@ -89,7 +89,7 @@ class VeroAgent:
         dialect = self.config.database.dialect
 
         system_prompt = (
-            f"You are Vero, an expert AI analytics engineer and 'Cursor for Data'.\n"
+            f"You are Vero, an expert AI analytics engineer and headless data intelligence agent.\n"
             f"Your database dialect is: {dialect}.\n"
             f"A previously generated SQL query failed validation or execution.\n"
             f"You must analyze the exact compiler/database error and output a corrected, valid SQL query.\n\n"

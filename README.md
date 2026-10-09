@@ -1,7 +1,7 @@
 # Vero 🚀
-> **The Open-Source "Cursor for Data" (Nao Labs Alternative)**
+> **Open-Source Headless Analytics Agent Framework & AI Data Workspace (Nao Labs Alternative)**
 
-Vero is a headless analytics agent framework and AI-powered workspace built for data teams, analysts, and software engineers. It integrates directly with data warehouses (PostgreSQL, DuckDB, SQLite, Snowflake, BigQuery) to provide context-engineered Text-to-Insights, safe query sandboxes, an MCP (Model Context Protocol) endpoint for Cursor/Claude, and an interactive local Analytics Studio.
+Vero is a headless analytics agent framework and AI-powered workspace built for data teams, analysts, and software engineers. It integrates directly with data warehouses (PostgreSQL, Snowflake, BigQuery, DuckDB, SQLite) to provide context-engineered Text-to-Insights, safe query sandboxes, a Model Context Protocol (MCP) endpoint for any AI editor or agent, and an interactive local Analytics Studio.
 
 ---
 
@@ -11,17 +11,17 @@ Vero is a headless analytics agent framework and AI-powered workspace built for 
 verodata/
 ├── vero-cli/       # Python core engine & CLI (managed with uv)
 │   ├── vero/
-│   │   ├── agent.py    # LLM reasoning & Text-to-SQL orchestrator
-│   │   ├── cli.py      # Rich terminal commands (init, sync, chat, mcp, serve)
+│   │   ├── agent.py    # LLM reasoning, reflection & Text-to-SQL orchestrator
+│   │   ├── cli.py      # Rich terminal commands (init, sync, doctor, run, chat, mcp, serve)
 │   │   ├── config.py   # Workspace & dialect configuration
-│   │   ├── context.py  # Markdown context engineering engine
+│   │   ├── context.py  # Context engineering engine (in-memory + local .vero/)
 │   │   ├── db.py       # Safe read-only multi-dialect query executor
-│   │   ├── mcp.py      # FastMCP server for Cursor and Claude Desktop
+│   │   ├── mcp.py      # FastMCP server for any MCP-compatible client
 │   │   └── server.py   # FastAPI server powering the web studio
-│   └── .vero/          # Local context filesystem (RULES.md, schemas, skills)
+│   └── .vero/          # Local context filesystem (RULES.md, schemas, metrics.yaml)
 │
 └── vero-studio/    # Local web UI (React + Vite + TypeScript + Vanilla CSS)
-    └── src/        # Interactive Chat, Schema Explorer & Recharts visualizer
+    └── src/        # Interactive Copilot, SQL Studio, Schema Explorer & Visualizer
 ```
 
 ---
@@ -36,7 +36,7 @@ verodata/
 ```bash
 cd vero-cli
 
-# Initialize project & sample eCommerce database
+# Initialize project configuration
 uv run vero init
 
 # Introspect schemas & generate context files
@@ -46,12 +46,12 @@ uv run vero sync
 uv run vero chat
 ```
 
-### 3. Connect to Cursor / Claude Desktop (MCP)
-Vero includes a built-in FastMCP server. Run:
+### 3. Connect via MCP (Model Context Protocol)
+Vero includes a built-in FastMCP server compatible with any MCP client (Claude Desktop, Cursor, Zed, Windsurf, or custom agent frameworks):
 ```bash
 uv run vero mcp
 ```
-Or configure your Cursor or Claude Desktop `mcpServers`:
+Example client configuration (`mcpServers`):
 ```json
 {
   "mcpServers": {
