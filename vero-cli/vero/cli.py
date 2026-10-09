@@ -194,5 +194,50 @@ def studio(
     """Launches the Vero Studio web workspace and opens it in your browser."""
     serve(host=host, port=port, open_browser=True)
 
+dbt_app = typer.Typer(
+    name="dbt",
+    help="dbt Core integration and manifest synchronization.",
+    no_args_is_help=True
+)
+app.add_typer(dbt_app, name="dbt")
+
+@dbt_app.command("sync")
+def dbt_sync(
+    project_dir: Path = typer.Option(
+        Path.cwd(),
+        "--project-dir",
+        "-p",
+        help="Path to dbt project containing target/manifest.json (or direct path to manifest.json)"
+    )
+):
+    """Parses dbt target/manifest.json and synchronizes models, columns, descriptions, tests, and metrics."""
+    from vero.dbt import DbtSyncEngine
+    console.print(Panel.fit("[bold cyan]Syncing dbt Project Manifest[/bold cyan]", border_style="cyan"))
+
+    try:
+        engine = DbtSyncEngine()
+        res = engine.sync(project_dir)
+
+        table = Table(title="Synced dbt Models", show_header=True, header_style="bold magenta")
+        table.add_column("Model Name", style="cyan")
+        table.add_column("Columns", style="green")
+        table.add_column("Relationships", style="yellow")
+        table.add_column("Documented", style="magenta")
+
+        for name, details in res["models"].items():
+            table.add_row(
+                name,
+                str(details["columns"]),
+                str(details["relationships"]),
+                "✓" if details["description"] else "-"
+            )
+
+        console.print(table)
+        console.print(
+            f"[bold green]✓ Successfully synced {res['models_synced']} models and {res['metrics_synced']} semantic metrics from dbt[/bold green]"
+        )
+    except Exception as e:
+        console.print(f"[bold red]dbt Sync Failed:[/bold red] {str(e)}")
+
 if __name__ == "__main__":
     app()
