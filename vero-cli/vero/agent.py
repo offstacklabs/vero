@@ -8,10 +8,15 @@ from vero.db import DatabaseManager
 from vero.config import VeroConfig
 
 class VeroAgent:
-    def __init__(self, config: Optional[VeroConfig] = None):
+    def __init__(
+        self,
+        config: Optional[VeroConfig] = None,
+        context_engine: Optional[ContextEngine] = None,
+        db_manager: Optional[DatabaseManager] = None
+    ):
         self.config = config or VeroConfig.load()
-        self.context_engine = ContextEngine()
-        self.db_manager = DatabaseManager(
+        self.context_engine = context_engine or ContextEngine()
+        self.db_manager = db_manager or DatabaseManager(
             dialect=self.config.database.dialect,
             connection_string=self.config.database.connection_string
         )
@@ -46,7 +51,6 @@ class VeroAgent:
                 response_format={"type": "json_object"}
             )
             raw_content = response.choices[0].message.content
-            # Clean possible markdown wrap
             cleaned = re.sub(r"^```json\s*", "", raw_content.strip())
             cleaned = re.sub(r"\s*```$", "", cleaned)
             parsed = json.loads(cleaned)
@@ -55,7 +59,6 @@ class VeroAgent:
             self.history.append({"role": "user", "content": f"Question: {question}"})
             self.history.append({"role": "assistant", "content": raw_content.strip()})
             
-            # Keep history manageable (last 10 turns = 20 messages)
             if len(self.history) > 20:
                 self.history = self.history[-20:]
 
@@ -71,33 +74,158 @@ class VeroAgent:
                 "error": str(e)
             }
 
-    def ask(self, question: str, execute: bool = True) -> Dict[str, Any]:
-        """End-to-end question answering: translates to SQL, executes against DB, and returns results."""
+    def reflect_and_heal(
+        self,
+        question: str,
+        failed_sql: str,
+        error_message: str,
+        attempt: int
+    ) -> Dict[str, Any]:
+        """
+        Reflexion Loop: Feeds compiler or runtime database error back to the LLM
+        along with the failed SQL query to autonomously repair it.
+        """
+        context = self.context_engine.get_full_context_prompt(query_hint=question)
+        dialect = self.config.database.dialect
+
+        system_prompt = (
+            f"You are Vero, an expert AI analytics engineer and 'Cursor for Data'.\n"
+            f"Your database dialect is: {dialect}.\n"
+            f"A previously generated SQL query failed validation or execution.\n"
+            f"You must analyze the exact compiler/database error and output a corrected, valid SQL query.\n\n"
+            f"Context:\n{context}\n\n"
+            f"Instructions:\n"
+            f"1. Only return valid JSON with keys: 'thought' (explanation of what caused the error and how you fixed it), 'sql' (corrected executable SQL query), 'explanation' (user-facing description), 'suggested_visualization' ('bar', 'line', 'pie', 'table'), 'tables_used' (list of table names), and 'suggested_followups' (list of 2-3 follow-ups).\n"
+            f"2. Never generate mutation operations (INSERT, UPDATE, DELETE, DROP, ALTER).\n"
+            f"3. Output purely the JSON object without markdown fences or additional text."
+        )
+
+        heal_prompt = (
+            f"Original Question: {question}\n\n"
+            f"Failed SQL (Attempt {attempt}):\n```sql\n{failed_sql}\n```\n\n"
+            f"Exact Database Error:\n{error_message}\n\n"
+            f"Analyze why this query failed against {dialect} and return the fixed query."
+        )
+
+        messages = [{"role": "system", "content": system_prompt}]
+        messages.extend(self.history)
+        messages.append({"role": "user", "content": heal_prompt})
+
+        try:
+            response = litellm.completion(
+                model=self.config.llm.model,
+                messages=messages,
+                temperature=self.config.llm.temperature,
+                response_format={"type": "json_object"}
+            )
+            raw_content = response.choices[0].message.content
+            cleaned = re.sub(r"^```json\s*", "", raw_content.strip())
+            cleaned = re.sub(r"\s*```$", "", cleaned)
+            parsed = json.loads(cleaned)
+            
+            # Record healed attempt to history
+            self.history.append({"role": "user", "content": f"Query failed: {error_message}"})
+            self.history.append({"role": "assistant", "content": raw_content.strip()})
+            
+            if len(self.history) > 20:
+                self.history = self.history[-20:]
+
+            return parsed
+        except Exception as e:
+            return {
+                "thought": f"Failed during reflection retry {attempt}.",
+                "sql": None,
+                "explanation": f"Reflection error: {str(e)}",
+                "suggested_visualization": "table",
+                "tables_used": [],
+                "suggested_followups": [],
+                "error": str(e)
+            }
+
+    def ask(self, question: str, execute: bool = True, max_retries: int = 2) -> Dict[str, Any]:
+        """
+        End-to-end question answering with autonomous self-healing reflection loop:
+        1. Draft candidate SQL
+        2. Validate AST safety
+        3. Execute against database
+        4. If error occurs, autonomously reflect and heal (up to max_retries)
+        """
         plan = self.generate_sql(question)
-        sql = plan.get("sql")
+        reflection_steps = []
+        attempt = 0
 
         result = {
             "question": question,
             "thought": plan.get("thought", ""),
-            "sql": sql,
+            "sql": plan.get("sql"),
             "explanation": plan.get("explanation", ""),
             "suggested_visualization": plan.get("suggested_visualization", "table"),
             "tables_used": plan.get("tables_used", []),
             "suggested_followups": plan.get("suggested_followups", []),
             "data": None,
             "duration_ms": 0,
+            "reflection_steps": reflection_steps,
             "error": plan.get("error")
         }
 
-        if execute and sql and not result["error"]:
+        while attempt <= max_retries:
+            sql = plan.get("sql")
+            if not sql:
+                result["error"] = plan.get("error") or "No SQL generated"
+                break
+
+            # Step 1: AST Safety Check
+            if not self.db_manager.is_safe_query(sql):
+                err_msg = "AST validation failed: Query contains mutation operations or syntax error."
+                reflection_steps.append({
+                    "attempt": attempt + 1,
+                    "failed_sql": sql,
+                    "error": err_msg,
+                    "thought": plan.get("thought", "")
+                })
+                if attempt < max_retries:
+                    attempt += 1
+                    plan = self.reflect_and_heal(question, sql, err_msg, attempt)
+                    continue
+                else:
+                    result["error"] = err_msg
+                    result["sql"] = sql
+                    break
+
+            if not execute:
+                result["sql"] = sql
+                result["thought"] = plan.get("thought", "")
+                result["explanation"] = plan.get("explanation", "")
+                break
+
+            # Step 2: Database Execution
             start_time = time.time()
             try:
                 query_result = self.db_manager.execute_query(sql)
                 result["data"] = query_result
                 result["duration_ms"] = round((time.time() - start_time) * 1000, 1)
+                result["sql"] = sql
+                result["thought"] = plan.get("thought", "")
+                result["explanation"] = plan.get("explanation", "")
+                result["suggested_visualization"] = plan.get("suggested_visualization", "table")
+                result["tables_used"] = plan.get("tables_used", [])
+                result["suggested_followups"] = plan.get("suggested_followups", [])
+                result["error"] = None
+                break  # Query succeeded!
             except Exception as e:
-                # Basic Reflection / Self-healing loop
-                result["error"] = str(e)
-                self.history.append({"role": "user", "content": f"The query failed with error: {str(e)}. Please fix the SQL."})
+                err_msg = str(e)
+                reflection_steps.append({
+                    "attempt": attempt + 1,
+                    "failed_sql": sql,
+                    "error": err_msg,
+                    "thought": plan.get("thought", "")
+                })
+                if attempt < max_retries:
+                    attempt += 1
+                    plan = self.reflect_and_heal(question, sql, err_msg, attempt)
+                else:
+                    result["error"] = err_msg
+                    result["sql"] = sql
+                    break
 
         return result

@@ -15,7 +15,8 @@ class DatabaseManager:
         if self.dialect == "duckdb":
             if not self._duckdb_con:
                 db_path = self.connection_string.replace("duckdb:///", "").replace("duckdb://", "")
-                self._duckdb_con = duckdb.connect(db_path if db_path else ":memory:", read_only=True if db_path else False)
+                is_mem = not db_path or db_path == ":memory:"
+                self._duckdb_con = duckdb.connect(":memory:" if is_mem else db_path, read_only=False if is_mem else True)
             return self._duckdb_con
         else:
             if not self._engine:
