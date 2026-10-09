@@ -229,3 +229,129 @@ class VeroAgent:
                     break
 
         return result
+
+    def ask_stream(self, question: str, execute: bool = True, max_retries: int = 2):
+        """
+        Streaming generator that emits real-time agent execution stages,
+        reflection actions, and the final synthesized result.
+        """
+        yield {
+            "type": "stage",
+            "stage": "retrieval",
+            "message": "Grounding warehouse schemas & semantic metrics..."
+        }
+
+        yield {
+            "type": "stage",
+            "stage": "generating",
+            "message": "Analyzing question & drafting candidate SQL..."
+        }
+
+        plan = self.generate_sql(question)
+        reflection_steps = []
+        attempt = 0
+
+        result = {
+            "question": question,
+            "thought": plan.get("thought", ""),
+            "sql": plan.get("sql"),
+            "explanation": plan.get("explanation", ""),
+            "suggested_visualization": plan.get("suggested_visualization", "table"),
+            "tables_used": plan.get("tables_used", []),
+            "suggested_followups": plan.get("suggested_followups", []),
+            "data": None,
+            "duration_ms": 0,
+            "reflection_steps": reflection_steps,
+            "error": plan.get("error")
+        }
+
+        while attempt <= max_retries:
+            sql = plan.get("sql")
+            if not sql:
+                result["error"] = plan.get("error") or "No SQL generated"
+                break
+
+            yield {
+                "type": "stage",
+                "stage": "ast_validation",
+                "message": f"Validating AST safety on {self.config.database.dialect} dialect...",
+                "sql": sql
+            }
+
+            if not self.db_manager.is_safe_query(sql):
+                err_msg = "AST validation failed: Query contains mutation operations or syntax error."
+                reflection_steps.append({
+                    "attempt": attempt + 1,
+                    "failed_sql": sql,
+                    "error": err_msg,
+                    "thought": plan.get("thought", "")
+                })
+                if attempt < max_retries:
+                    attempt += 1
+                    yield {
+                        "type": "stage",
+                        "stage": "reflecting",
+                        "attempt": attempt,
+                        "error": err_msg,
+                        "message": f"AST rejection intercepted. Autonomously repairing (attempt {attempt})..."
+                    }
+                    plan = self.reflect_and_heal(question, sql, err_msg, attempt)
+                    continue
+                else:
+                    result["error"] = err_msg
+                    result["sql"] = sql
+                    break
+
+            if not execute:
+                result["sql"] = sql
+                result["thought"] = plan.get("thought", "")
+                result["explanation"] = plan.get("explanation", "")
+                break
+
+            yield {
+                "type": "stage",
+                "stage": "executing",
+                "message": f"Executing query against {self.config.database.dialect} sandbox...",
+                "sql": sql
+            }
+
+            start_time = time.time()
+            try:
+                query_result = self.db_manager.execute_query(sql)
+                result["data"] = query_result
+                result["duration_ms"] = round((time.time() - start_time) * 1000, 1)
+                result["sql"] = sql
+                result["thought"] = plan.get("thought", "")
+                result["explanation"] = plan.get("explanation", "")
+                result["suggested_visualization"] = plan.get("suggested_visualization", "table")
+                result["tables_used"] = plan.get("tables_used", [])
+                result["suggested_followups"] = plan.get("suggested_followups", [])
+                result["error"] = None
+                break
+            except Exception as e:
+                err_msg = str(e)
+                reflection_steps.append({
+                    "attempt": attempt + 1,
+                    "failed_sql": sql,
+                    "error": err_msg,
+                    "thought": plan.get("thought", "")
+                })
+                if attempt < max_retries:
+                    attempt += 1
+                    yield {
+                        "type": "stage",
+                        "stage": "reflecting",
+                        "attempt": attempt,
+                        "error": err_msg,
+                        "message": f"Database compiler error intercepted. Autonomously repairing (attempt {attempt})..."
+                    }
+                    plan = self.reflect_and_heal(question, sql, err_msg, attempt)
+                else:
+                    result["error"] = err_msg
+                    result["sql"] = sql
+                    break
+
+        yield {
+            "type": "complete",
+            "result": result
+        }

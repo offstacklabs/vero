@@ -1,4 +1,5 @@
 from pathlib import Path
+import json
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -108,12 +109,22 @@ def preview_table(table_name: str):
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
+from fastapi.responses import StreamingResponse
+
 @app.post("/api/chat")
 def chat(req: ChatRequest):
     # Pass config and history? We instantiate a fresh agent for now
     agent = VeroAgent()
     response = agent.ask(req.question, execute=req.execute)
     return response
+
+@app.post("/api/chat/stream")
+def chat_stream(req: ChatRequest):
+    agent = VeroAgent()
+    def event_stream():
+        for event in agent.ask_stream(req.question, execute=req.execute):
+            yield f"data: {json.dumps(event)}\n\n"
+    return StreamingResponse(event_stream(), media_type="text/event-stream")
 
 from fastapi.staticfiles import StaticFiles
 
