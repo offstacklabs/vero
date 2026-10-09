@@ -51,8 +51,28 @@ def get_schemas():
             })
     return {"schemas": results}
 
+@app.post("/api/sync")
+def sync_schemas():
+    config = VeroConfig.load()
+    db = DatabaseManager(dialect=config.database.dialect, connection_string=config.database.connection_string)
+    try:
+        schema_info = db.introspect_schema()
+        engine = ContextEngine()
+        engine.sync_schemas(schema_info)
+        return {"success": True, "tables": len(schema_info)}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/rules")
+def get_rules():
+    engine = ContextEngine()
+    if engine.rules_file.exists():
+        return {"rules": engine.rules_file.read_text(encoding="utf-8")}
+    return {"rules": ""}
+
 @app.post("/api/chat")
 def chat(req: ChatRequest):
+    # Pass config and history? We instantiate a fresh agent for now
     agent = VeroAgent()
     response = agent.ask(req.question, execute=req.execute)
     return response
