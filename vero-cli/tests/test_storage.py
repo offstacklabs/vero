@@ -75,3 +75,45 @@ def test_context_engine_with_database_storage():
     prompt = engine.get_full_context_prompt()
     assert "Default LIMIT 10" in prompt
     assert "churn" in prompt
+
+def test_database_storage_multi_domain():
+    db_storage = DatabaseContextStorage("sqlite:///:memory:")
+
+    # 1. Domains exist
+    domains = [d["id"] for d in db_storage.get_domains()]
+    assert "global" in domains
+    assert "finance" in domains
+    assert "marketing" in domains
+
+    # 2. Domain Rules Inheritance
+    db_storage.save_rules("- Global standard: default LIMIT 50", domain="global")
+    db_storage.save_rules("- Fiscal year begins in February", domain="finance")
+
+    finance_rules = db_storage.get_rules(domain="finance")
+    assert "Global standard: default LIMIT 50" in finance_rules
+    assert "Fiscal year begins in February" in finance_rules
+
+    # 3. Domain Metric Collision Resolution
+    db_storage.save_metric({"name": "revenue", "description": "GAAP Recognized Revenue", "sql": "SUM(recognized_amount)"}, domain="finance")
+    db_storage.save_metric({"name": "revenue", "description": "Attributed Campaign GMV", "sql": "SUM(campaign_gmv)"}, domain="marketing")
+
+    finance_metrics = {m["name"]: m["sql"] for m in db_storage.get_metrics(domain="finance")}
+    marketing_metrics = {m["name"]: m["sql"] for m in db_storage.get_metrics(domain="marketing")}
+
+    assert finance_metrics["revenue"] == "SUM(recognized_amount)"
+    assert marketing_metrics["revenue"] == "SUM(campaign_gmv)"
+
+    # 4. Domain Schema Partitioning
+    db_storage.save_schema("invoices", "# Table: invoices\n| id | INT |", domain="finance")
+    db_storage.save_schema("campaigns", "# Table: campaigns\n| id | INT |", domain="marketing")
+
+    finance_schemas = db_storage.get_schemas(domain="finance")
+    assert "invoices" in finance_schemas
+    assert "campaigns" not in finance_schemas
+
+    # 5. ContextEngine Prompt Generation with Domain Scope
+    engine = ContextEngine(storage=db_storage)
+    finance_prompt = engine.get_full_context_prompt(domain="finance")
+    assert "invoices" in finance_prompt
+    assert "campaigns" not in finance_prompt
+    assert "Fiscal year begins in February" in finance_prompt

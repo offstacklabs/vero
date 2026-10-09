@@ -22,9 +22,9 @@ class VeroAgent:
         )
         self.history: List[Dict[str, str]] = []
 
-    def generate_sql(self, question: str) -> Dict[str, Any]:
+    def generate_sql(self, question: str, domain: Optional[str] = None) -> Dict[str, Any]:
         """Translates natural language question into valid SQL and explanation."""
-        context = self.context_engine.get_full_context_prompt(query_hint=question)
+        context = self.context_engine.get_full_context_prompt(query_hint=question, domain=domain)
         dialect = self.config.database.dialect
 
         system_prompt = (
@@ -79,13 +79,14 @@ class VeroAgent:
         question: str,
         failed_sql: str,
         error_message: str,
-        attempt: int
+        attempt: int,
+        domain: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         Reflexion Loop: Feeds compiler or runtime database error back to the LLM
         along with the failed SQL query to autonomously repair it.
         """
-        context = self.context_engine.get_full_context_prompt(query_hint=question)
+        context = self.context_engine.get_full_context_prompt(query_hint=question, domain=domain)
         dialect = self.config.database.dialect
 
         system_prompt = (
@@ -142,7 +143,7 @@ class VeroAgent:
                 "error": str(e)
             }
 
-    def ask(self, question: str, execute: bool = True, max_retries: int = 2) -> Dict[str, Any]:
+    def ask(self, question: str, execute: bool = True, max_retries: int = 2, domain: Optional[str] = None) -> Dict[str, Any]:
         """
         End-to-end question answering with autonomous self-healing reflection loop:
         1. Draft candidate SQL
@@ -150,7 +151,7 @@ class VeroAgent:
         3. Execute against database
         4. If error occurs, autonomously reflect and heal (up to max_retries)
         """
-        plan = self.generate_sql(question)
+        plan = self.generate_sql(question, domain=domain)
         reflection_steps = []
         attempt = 0
 
@@ -185,7 +186,7 @@ class VeroAgent:
                 })
                 if attempt < max_retries:
                     attempt += 1
-                    plan = self.reflect_and_heal(question, sql, err_msg, attempt)
+                    plan = self.reflect_and_heal(question, sql, err_msg, attempt, domain=domain)
                     continue
                 else:
                     result["error"] = err_msg
@@ -222,7 +223,7 @@ class VeroAgent:
                 })
                 if attempt < max_retries:
                     attempt += 1
-                    plan = self.reflect_and_heal(question, sql, err_msg, attempt)
+                    plan = self.reflect_and_heal(question, sql, err_msg, attempt, domain=domain)
                 else:
                     result["error"] = err_msg
                     result["sql"] = sql
@@ -230,15 +231,16 @@ class VeroAgent:
 
         return result
 
-    def ask_stream(self, question: str, execute: bool = True, max_retries: int = 2):
+    def ask_stream(self, question: str, execute: bool = True, max_retries: int = 2, domain: Optional[str] = None):
         """
         Streaming generator that emits real-time agent execution stages,
         reflection actions, and the final synthesized result.
         """
+        domain_label = f" ({domain.capitalize()})" if domain and domain != "global" else ""
         yield {
             "type": "stage",
             "stage": "retrieval",
-            "message": "Grounding warehouse schemas & semantic metrics..."
+            "message": f"Grounding warehouse schemas & semantic metrics{domain_label}..."
         }
 
         yield {
@@ -247,7 +249,7 @@ class VeroAgent:
             "message": "Analyzing question & drafting candidate SQL..."
         }
 
-        plan = self.generate_sql(question)
+        plan = self.generate_sql(question, domain=domain)
         reflection_steps = []
         attempt = 0
 
@@ -295,7 +297,7 @@ class VeroAgent:
                         "error": err_msg,
                         "message": f"AST rejection intercepted. Autonomously repairing (attempt {attempt})..."
                     }
-                    plan = self.reflect_and_heal(question, sql, err_msg, attempt)
+                    plan = self.reflect_and_heal(question, sql, err_msg, attempt, domain=domain)
                     continue
                 else:
                     result["error"] = err_msg
@@ -345,7 +347,7 @@ class VeroAgent:
                         "error": err_msg,
                         "message": f"Database compiler error intercepted. Autonomously repairing (attempt {attempt})..."
                     }
-                    plan = self.reflect_and_heal(question, sql, err_msg, attempt)
+                    plan = self.reflect_and_heal(question, sql, err_msg, attempt, domain=domain)
                 else:
                     result["error"] = err_msg
                     result["sql"] = sql

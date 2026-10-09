@@ -82,46 +82,51 @@ class ContextEngine:
             for m in default_metrics:
                 self.save_metric(m)
 
-    def get_rules(self) -> str:
+    def get_domains(self) -> List[Dict[str, str]]:
+        return self.storage.get_domains()
+
+    def get_rules(self, domain: str = "global") -> str:
         if self._in_memory_rules is not None:
             return self._in_memory_rules
-        return self.storage.get_rules()
+        return self.storage.get_rules(domain=domain)
 
-    def save_rules(self, rules: str) -> None:
-        self.storage.save_rules(rules)
+    def save_rules(self, rules: str, domain: str = "global") -> None:
+        self.storage.save_rules(rules, domain=domain)
 
-    def append_rule(self, rule: str) -> None:
-        self.storage.append_rule(rule)
+    def append_rule(self, rule: str, domain: str = "global") -> None:
+        self.storage.append_rule(rule, domain=domain)
 
-    def get_metrics(self) -> List[Dict[str, Any]]:
+    def get_metrics(self, domain: Optional[str] = None) -> List[Dict[str, Any]]:
         if self._in_memory_metrics is not None:
+            if domain:
+                return [m for m in self._in_memory_metrics if m.get("domain", "global") in ["global", domain]]
             return self._in_memory_metrics
-        return self.storage.get_metrics()
+        return self.storage.get_metrics(domain=domain)
 
-    def save_metric(self, metric: Dict[str, Any]) -> None:
-        self.storage.save_metric(metric)
+    def save_metric(self, metric: Dict[str, Any], domain: str = "global") -> None:
+        self.storage.save_metric(metric, domain=domain)
 
-    def delete_metric(self, name: str) -> bool:
-        return self.storage.delete_metric(name)
+    def delete_metric(self, name: str, domain: str = "global") -> bool:
+        return self.storage.delete_metric(name, domain=domain)
 
-    def get_schemas(self) -> Dict[str, str]:
+    def get_schemas(self, domain: Optional[str] = None) -> Dict[str, str]:
         if self._in_memory_schemas is not None:
             return self._in_memory_schemas
-        return self.storage.get_schemas()
+        return self.storage.get_schemas(domain=domain)
 
     def save_table_annotation(self, table_name: str, annotation: str) -> None:
         self.storage.save_table_annotation(table_name, annotation)
 
-    def sync_schemas(self, schema_info: Dict[str, Any]) -> None:
+    def sync_schemas(self, schema_info: Dict[str, Any], domain: str = "global") -> None:
         """Converts introspected database schema into readable Markdown and saves to storage."""
-        # Clean old schemas in storage
+        # Clean old schemas in storage for this domain
         current_schemas = set(schema_info.keys())
-        existing = set(self.storage.get_schemas().keys())
+        existing = set(self.storage.get_schemas(domain=domain).keys())
         for removed in existing - current_schemas:
             self.storage.delete_schema(removed)
 
         overview_lines = [
-            "# Database Schema Overview\n",
+            f"# Database Schema Overview ({domain.capitalize()} Domain)\n",
             "This folder contains the auto-synced schema definition for Vero AI.\n",
             f"**Total Tables/Views:** {len(schema_info)}\n\n",
             "## Entities\n"
@@ -146,29 +151,29 @@ class ContextEngine:
                     fk_referred = ", ".join(fk['referred_columns'])
                     table_md.append(f"- `{fk_constrained}` -> `{fk['referred_table']}({fk_referred})`")
 
-            self.storage.save_schema(table_name, "\n".join(table_md) + "\n")
+            self.storage.save_schema(table_name, "\n".join(table_md) + "\n", domain=domain)
 
         # Save overview to schemas_dir if local
         if isinstance(self.storage, LocalContextStorage):
             (self.schemas_dir / "README.md").write_text("\n".join(overview_lines) + "\n", encoding="utf-8")
 
-    def get_full_context_prompt(self, query_hint: Optional[str] = None, max_tables: int = 15) -> str:
-        """Compiles context into an LLM prompt from the active storage provider."""
+    def get_full_context_prompt(self, query_hint: Optional[str] = None, max_tables: int = 15, domain: Optional[str] = None) -> str:
+        """Compiles context into an LLM prompt from the active storage provider, scoped by domain."""
         context_parts = []
 
-        # 1. Rules
-        rules = self.get_rules()
+        # 1. Rules (inherited)
+        rules = self.get_rules(domain=domain or "global")
         if rules.strip():
             context_parts.append(f"=== RULES & GUIDELINES ===\n{rules.strip()}\n")
 
-        # 2. Semantic Layer / Metrics
-        metrics = self.get_metrics()
+        # 2. Semantic Layer / Metrics (domain filtered)
+        metrics = self.get_metrics(domain=domain)
         if metrics:
             metrics_yaml = yaml.dump({"metrics": metrics}, default_flow_style=False)
             context_parts.append(f"=== SEMANTIC LAYER (METRICS) ===\n{metrics_yaml}\n")
 
-        # 3. Database Schemas
-        schemas = self.get_schemas()
+        # 3. Database Schemas (domain filtered)
+        schemas = self.get_schemas(domain=domain)
         if schemas:
             table_names = list(schemas.keys())
             if query_hint and len(table_names) > max_tables:
