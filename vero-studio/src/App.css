@@ -1009,8 +1009,8 @@ body {
   cursor: not-allowed;
 }
 
-/* Semantic Layer & Schemas Viewer */
-.metrics-viewer, .schema-viewer {
+/* Semantic Layer Viewer */
+.metrics-viewer {
   padding: 28px;
   overflow-y: auto;
   max-width: 960px;
@@ -1039,42 +1039,6 @@ body {
   font-size: 13.5px;
   color: var(--text-muted);
   margin-bottom: 12px;
-}
-
-.schema-viewer table {
-  width: 100%;
-  border-collapse: collapse;
-  margin-top: 16px;
-  font-size: 13px;
-  text-align: left;
-}
-
-.schema-viewer th {
-  background-color: var(--table-header-bg);
-  padding: 10px 14px;
-  border-bottom: 1px solid var(--border-color);
-  font-weight: 600;
-  color: var(--text-muted);
-}
-
-.schema-viewer td {
-  padding: 10px 14px;
-  border-bottom: 1px solid var(--border-color);
-  font-family: var(--font-mono);
-  color: var(--text-main);
-}
-
-.schema-viewer h1 {
-  font-size: 22px;
-  margin-bottom: 16px;
-  color: var(--text-main);
-}
-
-.schema-viewer h2 {
-  font-size: 16px;
-  margin-top: 24px;
-  margin-bottom: 12px;
-  color: var(--accent-color);
 }
 
 /* Rules Editor */

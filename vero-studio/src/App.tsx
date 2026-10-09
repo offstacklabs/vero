@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
 import './App.css';
 import { 
-  Database, 
   Terminal, 
   Send, 
   Sparkles,
@@ -22,7 +21,6 @@ import {
   Check,
   Layers
 } from 'lucide-react';
-import { marked } from 'marked';
 import { ChartVisualizer } from './components/ChartVisualizer';
 import { SqlEditor } from './components/SqlEditor';
 import { MetricCard } from './components/MetricCard';
@@ -85,7 +83,7 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [schemas, setSchemas] = useState<TableEntity[]>([]);
   const [semanticMetrics, setSemanticMetrics] = useState<SemanticMetric[]>([]);
-  const [activeTab, setActiveTab] = useState<'chat' | 'schemas' | 'scratchpad' | 'metrics' | 'rules'>('chat');
+  const [activeTab, setActiveTab] = useState<'chat' | 'scratchpad' | 'metrics' | 'rules'>('chat');
   const [selectedSchema, setSelectedSchema] = useState<TableEntity | null>(null);
   const [dialect, setDialect] = useState<string>('BigQuery');
   const [syncing, setSyncing] = useState(false);
@@ -460,13 +458,6 @@ export default function App() {
             <BookOpen size={15} />
             <span>Rules & Context</span>
           </div>
-          <div 
-            className={`nav-item ${activeTab === 'schemas' ? 'active' : ''}`}
-            onClick={() => setActiveTab('schemas')}
-          >
-            <Database size={15} />
-            <span>Warehouse Schemas</span>
-          </div>
         </nav>
 
         <div className="schemas-section">
@@ -486,7 +477,7 @@ export default function App() {
             selectedTable={selectedSchema?.table || null}
             onSelectTable={(s) => {
               setSelectedSchema(s);
-              setActiveTab('schemas');
+              handlePreviewTable(s.table);
             }}
             onPreviewTable={handlePreviewTable}
             onQueryTable={handleQueryTable}
@@ -842,17 +833,6 @@ export default function App() {
               placeholder="# Corporate SQL Guidelines&#10;- Always filter out test accounts&#10;- Fiscal year begins in February"
               spellCheck={false}
             />
-          </div>
-        )}
-
-        {/* Schemas Documentation Tab */}
-        {activeTab === 'schemas' && (
-          <div className="schema-viewer">
-            {selectedSchema ? (
-              <div dangerouslySetInnerHTML={{ __html: marked(selectedSchema.content) as string }} />
-            ) : (
-              <div style={{ color: '#8b949e' }}>Select a schema on the sidebar to view details.</div>
-            )}
           </div>
         )}
       </main>
