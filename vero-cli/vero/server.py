@@ -23,6 +23,7 @@ app.add_middleware(
 class ChatRequest(BaseModel):
     question: str
     execute: bool = True
+    domain: Optional[str] = None
 
 class QueryRequest(BaseModel):
     sql: str
@@ -37,79 +38,91 @@ def get_config():
     config = VeroConfig.load()
     return config.model_dump()
 
+@app.get("/api/domains")
+def get_domains():
+    engine = ContextEngine()
+    return {"domains": engine.get_domains()}
+
 class RulesUpdateRequest(BaseModel):
     rules: str
+    domain: Optional[str] = "global"
 
 class RuleAppendRequest(BaseModel):
     rule: str
+    domain: Optional[str] = "global"
 
 class MetricCreateRequest(BaseModel):
     name: str
     description: Optional[str] = ""
     sql: str
+    domain: Optional[str] = "global"
 
 class AnnotationRequest(BaseModel):
     annotation: str
 
 @app.get("/api/schemas")
-def get_schemas():
+def get_schemas(domain: Optional[str] = None):
     engine = ContextEngine()
-    schemas = engine.get_schemas()
+    schemas = engine.get_schemas(domain=domain)
     results = [{"table": name, "content": md} for name, md in sorted(schemas.items())]
-    return {"schemas": results}
+    return {"schemas": results, "domain": domain or "all"}
 
 @app.post("/api/sync")
-def sync_schemas():
+def sync_schemas(domain: str = "global"):
     config = VeroConfig.load()
     db = DatabaseManager(dialect=config.database.dialect, connection_string=config.database.connection_string)
     try:
         schema_info = db.introspect_schema()
         engine = ContextEngine()
-        engine.sync_schemas(schema_info)
-        return {"success": True, "tables": len(schema_info)}
+        engine.sync_schemas(schema_info, domain=domain)
+        return {"success": True, "tables": len(schema_info), "domain": domain}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/rules")
-def get_rules():
+def get_rules(domain: str = "global"):
     engine = ContextEngine()
-    return {"rules": engine.get_rules()}
+    return {"rules": engine.get_rules(domain=domain), "domain": domain}
 
 @app.put("/api/rules")
 def update_rules(req: RulesUpdateRequest):
     engine = ContextEngine()
-    engine.save_rules(req.rules)
-    return {"success": True, "rules": engine.get_rules()}
+    target_domain = req.domain or "global"
+    engine.save_rules(req.rules, domain=target_domain)
+    return {"success": True, "rules": engine.get_rules(domain=target_domain), "domain": target_domain}
 
 @app.post("/api/rules/append")
 def append_rule(req: RuleAppendRequest):
     engine = ContextEngine()
-    engine.append_rule(req.rule)
-    return {"success": True, "rules": engine.get_rules()}
+    target_domain = req.domain or "global"
+    engine.append_rule(req.rule, domain=target_domain)
+    return {"success": True, "rules": engine.get_rules(domain=target_domain), "domain": target_domain}
 
 @app.get("/api/metrics")
-def get_metrics():
+def get_metrics(domain: Optional[str] = None):
     engine = ContextEngine()
-    return {"metrics": engine.get_metrics()}
+    return {"metrics": engine.get_metrics(domain=domain), "domain": domain or "all"}
 
 @app.post("/api/metrics")
 def create_or_update_metric(req: MetricCreateRequest):
     engine = ContextEngine()
+    target_domain = req.domain or "global"
     metric_data = {
         "name": req.name.strip(),
         "description": req.description.strip() if req.description else "",
-        "sql": req.sql.strip()
+        "sql": req.sql.strip(),
+        "domain": target_domain
     }
-    engine.save_metric(metric_data)
+    engine.save_metric(metric_data, domain=target_domain)
     return {"success": True, "metric": metric_data}
 
 @app.delete("/api/metrics/{metric_name}")
-def delete_metric(metric_name: str):
+def delete_metric(metric_name: str, domain: str = "global"):
     engine = ContextEngine()
-    deleted = engine.delete_metric(metric_name)
+    deleted = engine.delete_metric(metric_name, domain=domain)
     if not deleted:
-        raise HTTPException(status_code=404, detail=f"Metric '{metric_name}' not found")
-    return {"success": True, "deleted": metric_name}
+        raise HTTPException(status_code=404, detail=f"Metric '{metric_name}' in domain '{domain}' not found")
+    return {"success": True, "deleted": metric_name, "domain": domain}
 
 @app.post("/api/schemas/{table_name}/annotate")
 def annotate_table(table_name: str, req: AnnotationRequest):
@@ -142,16 +155,15 @@ from fastapi.responses import StreamingResponse
 
 @app.post("/api/chat")
 def chat(req: ChatRequest):
-    # Pass config and history? We instantiate a fresh agent for now
     agent = VeroAgent()
-    response = agent.ask(req.question, execute=req.execute)
+    response = agent.ask(req.question, execute=req.execute, domain=req.domain)
     return response
 
 @app.post("/api/chat/stream")
 def chat_stream(req: ChatRequest):
     agent = VeroAgent()
     def event_stream():
-        for event in agent.ask_stream(req.question, execute=req.execute):
+        for event in agent.ask_stream(req.question, execute=req.execute, domain=req.domain):
             yield f"data: {json.dumps(event)}\n\n"
     return StreamingResponse(event_stream(), media_type="text/event-stream")
 

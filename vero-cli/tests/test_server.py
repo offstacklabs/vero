@@ -87,3 +87,37 @@ def test_server_table_annotation_endpoint():
     })
     assert res.status_code == 200
     assert res.json()["table"] == "customers"
+
+def test_server_domains_endpoints():
+    client = TestClient(app)
+    
+    # 1. GET /api/domains
+    domains_res = client.get("/api/domains")
+    assert domains_res.status_code == 200
+    domain_ids = [d["id"] for d in domains_res.json()["domains"]]
+    assert "global" in domain_ids
+    assert "finance" in domain_ids
+
+    # 2. Domain-scoped rule save & get
+    client.put("/api/rules", json={"rules": "- Recognized revenue GAAP", "domain": "finance"})
+    rules_res = client.get("/api/rules?domain=finance")
+    assert rules_res.status_code == 200
+    assert "Recognized revenue GAAP" in rules_res.json()["rules"]
+
+    # 3. Domain-scoped metric creation & filtering
+    client.post("/api/metrics", json={
+        "name": "roas",
+        "description": "Return on Ad Spend",
+        "sql": "revenue / ad_spend",
+        "domain": "marketing"
+    })
+    
+    mkt_metrics_res = client.get("/api/metrics?domain=marketing")
+    assert mkt_metrics_res.status_code == 200
+    mkt_metric_names = [m["name"] for m in mkt_metrics_res.json()["metrics"]]
+    assert "roas" in mkt_metric_names
+
+    fin_metrics_res = client.get("/api/metrics?domain=finance")
+    assert fin_metrics_res.status_code == 200
+    fin_metric_names = [m["name"] for m in fin_metrics_res.json()["metrics"]]
+    assert "roas" not in fin_metric_names
