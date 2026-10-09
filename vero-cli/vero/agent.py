@@ -1,6 +1,6 @@
 import json
 import re
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 import litellm
 from vero.context import ContextEngine
 from vero.db import DatabaseManager
@@ -14,10 +14,11 @@ class VeroAgent:
             dialect=self.config.database.dialect,
             connection_string=self.config.database.connection_string
         )
+        self.history: List[Dict[str, str]] = []
 
     def generate_sql(self, question: str) -> Dict[str, Any]:
         """Translates natural language question into valid SQL and explanation."""
-        context = self.context_engine.get_full_context_prompt()
+        context = self.context_engine.get_full_context_prompt(query_hint=question)
         dialect = self.config.database.dialect
 
         system_prompt = (
@@ -32,15 +33,14 @@ class VeroAgent:
             f"4. Output purely the JSON object without markdown fences or additional text."
         )
 
-        user_prompt = f"Question: {question}"
+        messages = [{"role": "system", "content": system_prompt}]
+        messages.extend(self.history)
+        messages.append({"role": "user", "content": f"Question: {question}"})
 
         try:
             response = litellm.completion(
                 model=self.config.llm.model,
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt}
-                ],
+                messages=messages,
                 temperature=self.config.llm.temperature,
                 response_format={"type": "json_object"}
             )
@@ -49,13 +49,23 @@ class VeroAgent:
             cleaned = re.sub(r"^```json\s*", "", raw_content.strip())
             cleaned = re.sub(r"\s*```$", "", cleaned)
             parsed = json.loads(cleaned)
+            
+            # Save to history for multi-turn
+            self.history.append({"role": "user", "content": f"Question: {question}"})
+            self.history.append({"role": "assistant", "content": raw_content.strip()})
+            
+            # Keep history manageable (last 10 turns = 20 messages)
+            if len(self.history) > 20:
+                self.history = self.history[-20:]
+
             return parsed
         except Exception as e:
             return {
                 "thought": "Error contacting LLM or parsing output.",
                 "sql": None,
                 "explanation": f"LLM Error: {str(e)}",
-                "suggested_visualization": "table"
+                "suggested_visualization": "table",
+                "error": str(e)
             }
 
     def ask(self, question: str, execute: bool = True) -> Dict[str, Any]:
@@ -70,14 +80,17 @@ class VeroAgent:
             "explanation": plan.get("explanation", ""),
             "suggested_visualization": plan.get("suggested_visualization", "table"),
             "data": None,
-            "error": None
+            "error": plan.get("error")
         }
 
-        if execute and sql:
+        if execute and sql and not result["error"]:
             try:
                 query_result = self.db_manager.execute_query(sql)
                 result["data"] = query_result
             except Exception as e:
+                # Basic Reflection / Self-healing loop could go here in a v2
                 result["error"] = str(e)
+                # Store the error in the history so the LLM knows it failed
+                self.history.append({"role": "user", "content": f"The query failed with error: {str(e)}. Please fix the SQL."})
 
         return result
