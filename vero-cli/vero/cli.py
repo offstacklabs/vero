@@ -239,5 +239,57 @@ def dbt_sync(
     except Exception as e:
         console.print(f"[bold red]dbt Sync Failed:[/bold red] {str(e)}")
 
+rules_app = typer.Typer(
+    name="rules",
+    help="Manage business and SQL rules context.",
+    no_args_is_help=True
+)
+app.add_typer(rules_app, name="rules")
+
+@rules_app.command("show")
+def rules_show():
+    """Displays the active business rules."""
+    engine = ContextEngine()
+    rules = engine.get_rules()
+    console.print(Panel(Markdown(rules) if rules else "[dim]No rules configured yet.[/dim]", title="Vero Business Rules"))
+
+@rules_app.command("add")
+def rules_add(rule: str = typer.Argument(..., help="Rule or convention to add")):
+    """Appends a new business rule or convention."""
+    engine = ContextEngine()
+    engine.append_rule(rule)
+    console.print(f"[bold green]✓ Rule added:[/bold green] {rule}")
+
+metrics_app = typer.Typer(
+    name="metrics",
+    help="Manage semantic metrics.",
+    no_args_is_help=True
+)
+app.add_typer(metrics_app, name="metrics")
+
+@metrics_app.command("list")
+def metrics_list():
+    """Lists all registered semantic metrics."""
+    engine = ContextEngine()
+    metrics = engine.get_metrics()
+    table = Table(title="Semantic Metrics", show_header=True, header_style="bold magenta")
+    table.add_column("Metric Name", style="cyan")
+    table.add_column("Description", style="white")
+    table.add_column("SQL Formula", style="green")
+    for m in metrics:
+        table.add_row(m["name"], m.get("description", "-"), m.get("sql", "-"))
+    console.print(table)
+
+@metrics_app.command("add")
+def metrics_add(
+    name: str = typer.Option(..., "--name", "-n", help="Metric identifier (e.g. mrr)"),
+    sql: str = typer.Option(..., "--sql", "-s", help="SQL aggregation expression"),
+    description: str = typer.Option("", "--desc", "-d", help="Metric description")
+):
+    """Creates or updates a semantic metric."""
+    engine = ContextEngine()
+    engine.save_metric({"name": name, "sql": sql, "description": description})
+    console.print(f"[bold green]✓ Metric saved:[/bold green] [cyan]{name}[/cyan] = `{sql}`")
+
 if __name__ == "__main__":
     app()
