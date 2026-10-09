@@ -24,8 +24,8 @@ console = Console()
 
 @app.command()
 def init(
-    dialect: str = typer.Option("postgres", "--dialect", "-d", help="Database dialect (postgres, snowflake, bigquery, duckdb)"),
-    conn: str = typer.Option("postgresql://user:password@localhost:5432/vero_db", "--conn", "-c", help="Connection string")
+    dialect: str = typer.Option("bigquery", "--dialect", "-d", help="Database dialect (bigquery, snowflake, postgres, duckdb)"),
+    conn: str = typer.Option("bigquery://my-project-id/my_analytics_dataset", "--conn", "-c", help="Connection string")
 ):
     """Initializes the .vero context directory and configuration."""
     console.print(Panel.fit("[bold cyan]Initializing Vero Project[/bold cyan]", border_style="cyan"))

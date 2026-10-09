@@ -1,7 +1,7 @@
 version: '1.0'
 database:
-  dialect: postgres
-  connection_string: postgresql://user:password@localhost:5432/vero_db
+  dialect: bigquery
+  connection_string: bigquery://my-project-id/my_analytics_dataset
 llm:
   model: gpt-4o
   temperature: 0.0

@@ -73,7 +73,7 @@ export default function App() {
   const [semanticMetrics, setSemanticMetrics] = useState<SemanticMetric[]>([]);
   const [activeTab, setActiveTab] = useState<'chat' | 'schemas' | 'scratchpad' | 'metrics'>('chat');
   const [selectedSchema, setSelectedSchema] = useState<TableEntity | null>(null);
-  const [dialect, setDialect] = useState<string>('Postgres');
+  const [dialect, setDialect] = useState<string>('BigQuery');
   const [syncing, setSyncing] = useState(false);
   const [editorSql, setEditorSql] = useState<string>('SELECT * FROM customers LIMIT 10;');
   const [theme, setTheme] = useState<'light' | 'dark'>(() => {
@@ -91,7 +91,11 @@ export default function App() {
       .then(data => {
         if (data.database && data.database.dialect) {
           const d = data.database.dialect;
-          setDialect(d.charAt(0).toUpperCase() + d.slice(1));
+          if (d.toLowerCase() === 'bigquery') {
+            setDialect('BigQuery');
+          } else {
+            setDialect(d.charAt(0).toUpperCase() + d.slice(1));
+          }
         }
       })
       .catch(() => console.error("Could not fetch config"));
