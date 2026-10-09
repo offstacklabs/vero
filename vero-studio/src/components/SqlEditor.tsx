@@ -51,9 +51,9 @@ export const SqlEditor: React.FC<SqlEditorProps> = ({
   };
 
   return (
-    <div className="cursor-editor-container">
+    <div className="studio-editor-container">
       {/* Editor Header */}
-      <div className="cursor-editor-toolbar">
+      <div className="studio-editor-toolbar">
         <div className="editor-left-tools">
           <button 
             className="editor-run-btn"
@@ -96,9 +96,9 @@ export const SqlEditor: React.FC<SqlEditorProps> = ({
       </div>
 
       {/* Editor Body */}
-      <div className="cursor-editor-codearea">
+      <div className="studio-editor-codearea">
         <textarea
-          className="cursor-sql-textarea"
+          className="studio-sql-textarea"
           value={sql}
           onChange={(e) => setSql(e.target.value)}
           onKeyDown={handleKeyDown}
@@ -109,7 +109,7 @@ export const SqlEditor: React.FC<SqlEditorProps> = ({
 
       {/* Editor Output Canvas */}
       {result && (
-        <div className="cursor-editor-output">
+        <div className="studio-editor-output">
           <div className="output-header-bar">
             <div className="output-tab-group">
               <button 

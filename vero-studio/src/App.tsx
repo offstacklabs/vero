@@ -52,7 +52,7 @@ export default function App() {
     {
       id: '1',
       sender: 'assistant',
-      text: 'Hello! I am Vero, your Cursor for Data analytics agent. Ask any analytical question, or click any table on the left to preview it.',
+      text: 'Hello! I am Vero, your open-source analytics agent. Ask any analytical question, or click any table on the left to preview it.',
       suggested_followups: [
         'Show total revenue by customer',
         'What is our annual recurring revenue?',
@@ -238,11 +238,11 @@ export default function App() {
 
   return (
     <div className="app-container">
-      {/* Sidebar (Nao Labs / Cursor style) */}
+      {/* Sidebar */}
       <aside className="sidebar">
         <div className="sidebar-header">
           <span className="brand-badge">VERO</span>
-          <span className="sidebar-title">Cursor for Data</span>
+          <span className="sidebar-title">Analytics Studio</span>
         </div>
 
         <nav className="sidebar-nav">
@@ -419,7 +419,7 @@ export default function App() {
           </>
         )}
 
-        {/* Cursor SQL Studio Editor Tab */}
+        {/* SQL Studio Editor Tab */}
         {activeTab === 'scratchpad' && (
           <SqlEditor
             initialSql={editorSql}
