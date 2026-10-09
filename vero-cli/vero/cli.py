@@ -170,11 +170,29 @@ def mcp(transport: str = typer.Option("stdio", "--transport", "-t", help="stdio 
 @app.command()
 def serve(
     host: str = typer.Option("127.0.0.1", "--host", "-h"),
-    port: int = typer.Option(8000, "--port", "-p")
+    port: int = typer.Option(8000, "--port", "-p"),
+    open_browser: bool = typer.Option(False, "--open", "-o", help="Automatically open studio in default browser")
 ):
-    """Starts the Vero Studio backend server."""
-    console.print(Panel.fit(f"[bold cyan]Starting Vero Studio Server on http://{host}:{port}[/bold cyan]", border_style="cyan"))
-    uvicorn.run("vero.server:app", host=host, port=port, reload=True)
+    """Starts the Vero Studio server (serves both API and Web UI)."""
+    url = f"http://{host}:{port}"
+    console.print(Panel.fit(
+        f"[bold magenta]Vero Analytics Studio[/bold magenta]\n"
+        f"URL: [bold cyan]{url}[/bold cyan]\n"
+        f"[dim]Serving both full Web UI and AI agent API on port {port}[/dim]",
+        border_style="magenta"
+    ))
+    if open_browser:
+        import webbrowser
+        webbrowser.open(url)
+    uvicorn.run("vero.server:app", host=host, port=port, reload=False)
+
+@app.command()
+def studio(
+    host: str = typer.Option("127.0.0.1", "--host", "-h"),
+    port: int = typer.Option(8000, "--port", "-p"),
+):
+    """Launches the Vero Studio web workspace and opens it in your browser."""
+    serve(host=host, port=port, open_browser=True)
 
 if __name__ == "__main__":
     app()

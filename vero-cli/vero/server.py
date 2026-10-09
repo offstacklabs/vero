@@ -1,3 +1,4 @@
+from pathlib import Path
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -114,6 +115,8 @@ def chat(req: ChatRequest):
     response = agent.ask(req.question, execute=req.execute)
     return response
 
+from fastapi.staticfiles import StaticFiles
+
 @app.post("/api/query")
 def run_query(req: QueryRequest):
     config = VeroConfig.load()
@@ -125,3 +128,8 @@ def run_query(req: QueryRequest):
         return {"success": True, "data": data, "duration_ms": duration_ms}
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+# Mount prebuilt Studio UI assets if present
+static_dir = Path(__file__).parent / "static"
+if static_dir.exists():
+    app.mount("/", StaticFiles(directory=str(static_dir), html=True), name="static")

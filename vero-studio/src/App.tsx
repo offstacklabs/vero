@@ -49,6 +49,8 @@ interface Message {
   error?: string;
 }
 
+const API_BASE = import.meta.env.VITE_API_BASE_URL || '';
+
 export default function App() {
   const [messages, setMessages] = useState<Message[]>([
     {
@@ -81,7 +83,7 @@ export default function App() {
   }, [theme]);
 
   const fetchConfig = () => {
-    fetch('http://127.0.0.1:8000/api/config')
+    fetch(`${API_BASE}/api/config`)
       .then(res => res.json())
       .then(data => {
         if (data.database && data.database.dialect) {
@@ -93,7 +95,7 @@ export default function App() {
   };
 
   const fetchSchemas = () => {
-    fetch('http://127.0.0.1:8000/api/schemas')
+    fetch(`${API_BASE}/api/schemas`)
       .then(res => res.json())
       .then(data => {
         if (data.schemas) {
@@ -110,7 +112,7 @@ export default function App() {
   };
 
   const fetchMetrics = () => {
-    fetch('http://127.0.0.1:8000/api/metrics')
+    fetch(`${API_BASE}/api/metrics`)
       .then(res => res.json())
       .then(data => {
         if (data.metrics) {
@@ -130,7 +132,7 @@ export default function App() {
   const handleSyncSchemas = async () => {
     setSyncing(true);
     try {
-      await fetch('http://127.0.0.1:8000/api/sync', { method: 'POST' });
+      await fetch(`${API_BASE}/api/sync`, { method: 'POST' });
       fetchSchemas();
     } catch (err) {
       console.error("Failed to sync schemas:", err);
@@ -153,7 +155,7 @@ export default function App() {
     setLoading(true);
 
     try {
-      const response = await fetch('http://127.0.0.1:8000/api/chat', {
+      const response = await fetch(`${API_BASE}/api/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ question: textToSend, execute: true })
@@ -197,7 +199,7 @@ export default function App() {
   const handleExecuteSql = async (sql: string) => {
     setLoading(true);
     try {
-      const response = await fetch('http://127.0.0.1:8000/api/query', {
+      const response = await fetch(`${API_BASE}/api/query`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ sql })
@@ -215,7 +217,7 @@ export default function App() {
   const handlePreviewTable = async (tableName: string) => {
     setLoading(true);
     try {
-      const res = await fetch(`http://127.0.0.1:8000/api/tables/${tableName}/preview`);
+      const res = await fetch(`${API_BASE}/api/tables/${tableName}/preview`);
       if (res.ok) {
         const data = await res.json();
         setEditorSql(data.sql);
