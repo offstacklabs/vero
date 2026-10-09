@@ -64,6 +64,8 @@ def sync_schemas():
         raise HTTPException(status_code=500, detail=str(e))
 
 import yaml
+import time
+import re
 
 @app.get("/api/rules")
 def get_rules():
@@ -84,6 +86,27 @@ def get_metrics():
             return {"metrics": []}
     return {"metrics": []}
 
+@app.get("/api/tables/{table_name}/preview")
+def preview_table(table_name: str):
+    """Fetches a quick 10-row sample for any warehouse table."""
+    if not re.match(r"^[a-zA-Z0-9_\.]+$", table_name):
+        raise HTTPException(status_code=400, detail="Invalid table identifier")
+    config = VeroConfig.load()
+    db = DatabaseManager(dialect=config.database.dialect, connection_string=config.database.connection_string)
+    sql = f"SELECT * FROM {table_name} LIMIT 10"
+    start_time = time.time()
+    try:
+        data = db.execute_query(sql, limit=10)
+        duration_ms = round((time.time() - start_time) * 1000, 1)
+        return {
+            "table": table_name,
+            "sql": sql,
+            "data": data,
+            "duration_ms": duration_ms
+        }
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
 @app.post("/api/chat")
 def chat(req: ChatRequest):
     # Pass config and history? We instantiate a fresh agent for now
@@ -95,8 +118,10 @@ def chat(req: ChatRequest):
 def run_query(req: QueryRequest):
     config = VeroConfig.load()
     db = DatabaseManager(dialect=config.database.dialect, connection_string=config.database.connection_string)
+    start_time = time.time()
     try:
         data = db.execute_query(req.sql, limit=req.limit or 100)
-        return {"success": True, "data": data}
+        duration_ms = round((time.time() - start_time) * 1000, 1)
+        return {"success": True, "data": data, "duration_ms": duration_ms}
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))

@@ -1,5 +1,6 @@
 import json
 import re
+import time
 from typing import Dict, Any, Optional, List
 import litellm
 from vero.context import ContextEngine
@@ -27,7 +28,7 @@ class VeroAgent:
             f"You must translate business questions into accurate, high-performance, and safe SQL queries.\n\n"
             f"Context:\n{context}\n\n"
             f"Instructions:\n"
-            f"1. Only return valid JSON with keys: 'thought' (your reasoning), 'sql' (executable SQL query), 'explanation' (concise description of the query for the user), and 'suggested_visualization' ('bar', 'line', 'pie', 'table').\n"
+            f"1. Only return valid JSON with keys: 'thought' (detailed reasoning), 'sql' (executable SQL query), 'explanation' (user-facing description), 'suggested_visualization' ('bar', 'line', 'pie', 'table'), 'tables_used' (list of table names), and 'suggested_followups' (list of 2-3 short follow-up questions to explore next).\n"
             f"2. Never generate mutation operations (INSERT, UPDATE, DELETE, DROP, ALTER).\n"
             f"3. Strictly adhere to foreign keys and schema definitions provided in the context.\n"
             f"4. Output purely the JSON object without markdown fences or additional text."
@@ -65,6 +66,8 @@ class VeroAgent:
                 "sql": None,
                 "explanation": f"LLM Error: {str(e)}",
                 "suggested_visualization": "table",
+                "tables_used": [],
+                "suggested_followups": [],
                 "error": str(e)
             }
 
@@ -79,18 +82,22 @@ class VeroAgent:
             "sql": sql,
             "explanation": plan.get("explanation", ""),
             "suggested_visualization": plan.get("suggested_visualization", "table"),
+            "tables_used": plan.get("tables_used", []),
+            "suggested_followups": plan.get("suggested_followups", []),
             "data": None,
+            "duration_ms": 0,
             "error": plan.get("error")
         }
 
         if execute and sql and not result["error"]:
+            start_time = time.time()
             try:
                 query_result = self.db_manager.execute_query(sql)
                 result["data"] = query_result
+                result["duration_ms"] = round((time.time() - start_time) * 1000, 1)
             except Exception as e:
-                # Basic Reflection / Self-healing loop could go here in a v2
+                # Basic Reflection / Self-healing loop
                 result["error"] = str(e)
-                # Store the error in the history so the LLM knows it failed
                 self.history.append({"role": "user", "content": f"The query failed with error: {str(e)}. Please fix the SQL."})
 
         return result
