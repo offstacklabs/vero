@@ -10,7 +10,9 @@ import {
   TerminalSquare,
   RefreshCw,
   LineChart as LineChartIcon,
-  Play
+  Play,
+  Sun,
+  Moon
 } from 'lucide-react';
 import { marked } from 'marked';
 import { ChartVisualizer } from './components/ChartVisualizer';
@@ -69,6 +71,14 @@ export default function App() {
   const [dialect, setDialect] = useState<string>('Postgres');
   const [syncing, setSyncing] = useState(false);
   const [editorSql, setEditorSql] = useState<string>('SELECT * FROM customers LIMIT 10;');
+  const [theme, setTheme] = useState<'light' | 'dark'>(() => {
+    return (localStorage.getItem('vero_theme') as 'light' | 'dark') || 'light';
+  });
+
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme);
+    localStorage.setItem('vero_theme', theme);
+  }, [theme]);
 
   const fetchConfig = () => {
     fetch('http://127.0.0.1:8000/api/config')
@@ -237,7 +247,7 @@ export default function App() {
   };
 
   return (
-    <div className="app-container">
+    <div className="app-container" data-theme={theme}>
       {/* Sidebar */}
       <aside className="sidebar">
         <div className="sidebar-header">
@@ -304,13 +314,26 @@ export default function App() {
       {/* Main Studio Area */}
       <main className="main-area">
         <header className="top-bar">
-          <div className="status-pill">
-            <span className="status-dot"></span>
-            <span>Agent Status: Connected</span>
+          <div className="top-bar-left">
+            <div className="status-pill">
+              <span className="status-dot"></span>
+              <span>Agent Status: Connected</span>
+            </div>
+            <div className="status-pill">
+              <Sparkles size={14} color="var(--accent-color)" />
+              <span>Warehouse: {dialect}</span>
+            </div>
           </div>
-          <div className="status-pill">
-            <Sparkles size={14} color="#38bdf8" />
-            <span>Warehouse: {dialect}</span>
+
+          <div className="top-bar-right">
+            <button 
+              className="theme-toggle-btn"
+              onClick={() => setTheme(prev => prev === 'light' ? 'dark' : 'light')}
+              title={`Switch to ${theme === 'light' ? 'Dark' : 'Light'} Mode`}
+            >
+              {theme === 'light' ? <Moon size={13} /> : <Sun size={13} />}
+              <span>{theme === 'light' ? 'Dark Mode' : 'Light Mode'}</span>
+            </button>
           </div>
         </header>
 
