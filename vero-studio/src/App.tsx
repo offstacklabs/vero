@@ -19,7 +19,6 @@ import {
   BookmarkPlus,
   Save,
   Check,
-  Layers,
   MessageSquarePlus,
   MessageSquare,
   LayoutDashboard,
@@ -33,7 +32,9 @@ import {
   AlertTriangle,
   XCircle,
   Info,
-  X
+  X,
+  Sparkles,
+  Layers
 } from 'lucide-react';
 import { ChartVisualizer } from './components/ChartVisualizer';
 import { SqlEditor } from './components/SqlEditor';
@@ -106,6 +107,13 @@ interface Message {
   };
   suggested_visualization?: string;
   error?: string;
+  diagnostics?: {
+    summary: string;
+    findings: Array<{
+      dimension: string;
+      data: any[][];
+    }>;
+  };
 }
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || '';
@@ -154,7 +162,32 @@ export default function App() {
   const [teachRuleInput, setTeachRuleInput] = useState<string>('');
   const [sessions, setSessions] = useState<SessionInfo[]>([]);
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
+  const [diagnosticLoadingId, setDiagnosticLoadingId] = useState<string | null>(null);
   const [token, setToken] = useState<string | null>(() => localStorage.getItem('vero_auth_token'));
+
+  const handleRunDiagnostics = async (msgId: string, sql: string) => {
+    setDiagnosticLoadingId(msgId);
+    try {
+      const res = await fetch(`${API_BASE}/api/diagnostics/explain`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+        body: JSON.stringify({ sql })
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setMessages(prev => prev.map(m => 
+          m.id === msgId ? { ...m, diagnostics: data } : m
+        ));
+        addToast('Diagnostic Root Cause Analysis completed', 'success');
+      } else {
+        addToast(data.detail || data.error || 'Diagnostic analysis failed', 'error');
+      }
+    } catch (err: any) {
+      addToast(`Diagnostic error: ${err.message || err}`, 'error');
+    } finally {
+      setDiagnosticLoadingId(null);
+    }
+  };
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
   const [authConfig, setAuthConfig] = useState<{ mode: string; provider_name: string; issuer_url?: string } | null>(null);
   const [toasts, setToasts] = useState<Toast[]>([]);
@@ -1164,6 +1197,60 @@ export default function App() {
                         Data Visualization ({msg.suggested_visualization})
                       </div>
                       <ChartVisualizer type={msg.suggested_visualization} data={msg.data} />
+                    </div>
+                  )}
+
+                  {/* Diagnostic Root Cause Analysis Engine */}
+                  {msg.sender === 'assistant' && msg.sql && !msg.is_streaming && !isSingleMetric(msg.data) && (
+                    <div style={{ marginTop: '12px' }}>
+                      {!msg.diagnostics && diagnosticLoadingId !== msg.id && (
+                        <button 
+                          className="editor-tool-btn"
+                          onClick={() => handleRunDiagnostics(msg.id, msg.sql!)}
+                          title="Run automated RCA to find the statistical drivers of this metric"
+                        >
+                          <Sparkles size={13} color="var(--accent-color)" />
+                          <span>Explain Why (Run Diagnostics)</span>
+                        </button>
+                      )}
+
+                      {diagnosticLoadingId === msg.id && (
+                        <div className="streaming-stage-pill" style={{ display: 'inline-flex', marginTop: '0' }}>
+                          <Loader2 size={13} className="spin" color="var(--accent-color)" />
+                          <span>Slicing metric by dimensions to find top drivers...</span>
+                        </div>
+                      )}
+
+                      {msg.diagnostics && (
+                        <div className="diagnostics-card">
+                          <div className="diagnostics-header">
+                            <Sparkles size={14} color="var(--accent-color)" />
+                            <span>Root Cause Analysis (Drivers)</span>
+                          </div>
+                          <div className="diagnostics-summary">
+                            {msg.diagnostics.summary}
+                          </div>
+                          <div className="diagnostics-tables">
+                            {msg.diagnostics.findings.map((f, i) => (
+                              <div key={i} className="diagnostic-finding">
+                                <div className="diagnostic-dim-label">Top Segments by {f.dimension}</div>
+                                <table className="data-table">
+                                  <tbody>
+                                    {f.data.map((row, rowIdx) => (
+                                      <tr key={rowIdx}>
+                                        <td style={{ width: '60%' }}>{row[0] || 'Unknown'}</td>
+                                        <td style={{ textAlign: 'right', fontWeight: 600, color: 'var(--text-primary)' }}>
+                                          {typeof row[1] === 'number' && row[1] % 1 !== 0 ? row[1].toFixed(2) : row[1]}
+                                        </td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   )}
 
