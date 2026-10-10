@@ -227,3 +227,44 @@ def test_server_observability_stats():
     assert "active_dialect" in data
     assert "top_expensive_queries" in data
     assert "daily_breakdown" in data
+
+def test_server_auth_and_rbac():
+    client = TestClient(app)
+    # 1. Login with default admin
+    login_res = client.post("/api/auth/login", json={"email": "admin@vero.local", "password": "admin"})
+    assert login_res.status_code == 200
+    token = login_res.json()["token"]
+    assert token is not None
+    headers = {"Authorization": f"Bearer {token}"}
+
+    # 2. Access /api/auth/me
+    me_res = client.get("/api/auth/me", headers=headers)
+    assert me_res.status_code == 200
+    assert me_res.json()["user"]["role"] == "admin"
+
+    # 3. Create a viewer user in the database
+    from vero.auth import AuthManager, create_access_token
+    mgr = AuthManager()
+    viewer_user, _ = mgr.create_user(
+        email="viewer_test@company.com",
+        name="Test Viewer",
+        role="viewer",
+        allowed_domains=["finance"]
+    )
+    viewer_token = create_access_token(viewer_user)
+    viewer_headers = {"Authorization": f"Bearer {viewer_token}"}
+
+    # 4. Viewer should be blocked from executing ad-hoc queries (403 Forbidden)
+    blocked_query = client.post("/api/query", json={"sql": "SELECT 1"}, headers=viewer_headers)
+    assert blocked_query.status_code == 403
+
+    # 5. Domain access control: viewer accessing finance is allowed, marketing is blocked (403 Forbidden)
+    domains_res = client.get("/api/domains", headers=viewer_headers)
+    assert domains_res.status_code == 200
+    accessible_ids = [d["id"] for d in domains_res.json()["domains"]]
+    assert "finance" in accessible_ids
+    assert "marketing" not in accessible_ids
+
+    # 6. Unauthorized domain chat blocked
+    blocked_chat = client.post("/api/chat", json={"question": "show ads", "domain": "marketing"}, headers=viewer_headers)
+    assert blocked_chat.status_code == 403

@@ -2,7 +2,7 @@ from pathlib import Path
 import json
 import time
 import re
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Header, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional, Dict, Any, List
@@ -10,10 +10,11 @@ from vero.agent import VeroAgent
 from vero.config import VeroConfig
 from vero.context import ContextEngine
 from vero.db import DatabaseManager
+from vero.auth import AuthManager, User, create_access_token
 
 app = FastAPI(title="Vero Analytics Server", version="0.1.0")
 
-# Enable CORS for local Studio UI development
+# Enable CORS for Studio UI & client integrations
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -21,6 +22,94 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+def get_current_user(
+    authorization: Optional[str] = Header(None),
+    x_api_key: Optional[str] = Header(None)
+) -> User:
+    """
+    Validates Bearer JWT token or X-API-Key against centralized database.
+    If no auth header is supplied, falls back to seeded default admin in single-user mode.
+    """
+    mgr = AuthManager()
+    token = None
+    if authorization and authorization.startswith("Bearer "):
+        token = authorization[7:].strip()
+    elif x_api_key:
+        token = x_api_key.strip()
+
+    if not token:
+        # Fallback to seeded default admin if no token provided
+        user, _ = mgr.seed_default_admin()
+        return user
+
+    user = mgr.authenticate(token)
+    if not user or not user.is_active:
+        raise HTTPException(status_code=401, detail="Invalid or expired authentication credentials")
+
+    return user
+
+def require_role(allowed_roles: List[str]):
+    def role_checker(user: User = Depends(get_current_user)) -> User:
+        if user.role not in allowed_roles:
+            raise HTTPException(
+                status_code=403,
+                detail=f"Access forbidden: User role '{user.role}' lacks required permissions ({', '.join(allowed_roles)})"
+            )
+        return user
+    return role_checker
+
+def check_domain_auth(domain: Optional[str], user: User):
+    if not domain or domain == "global":
+        return
+    mgr = AuthManager()
+    if not mgr.can_access_domain(user, domain):
+        raise HTTPException(
+            status_code=403,
+            detail=f"Access forbidden: User '{user.email}' is not authorized to access domain '{domain}'"
+        )
+
+class LoginRequest(BaseModel):
+    email: Optional[str] = None
+    password: Optional[str] = None
+    api_key: Optional[str] = None
+
+@app.post("/api/auth/login")
+def login(req: LoginRequest):
+    mgr = AuthManager()
+    mgr.seed_default_admin()
+    user = None
+    if req.api_key:
+        user = mgr.authenticate(req.api_key)
+    elif req.email and req.password:
+        user = mgr.authenticate(req.email, req.password)
+
+    if not user or not user.is_active:
+        raise HTTPException(status_code=401, detail="Invalid credentials or inactive user account")
+
+    token = create_access_token(user)
+    return {
+        "token": token,
+        "user": {
+            "id": user.id,
+            "email": user.email,
+            "name": user.name,
+            "role": user.role,
+            "allowed_domains": user.allowed_domains
+        }
+    }
+
+@app.get("/api/auth/me")
+def get_me(user: User = Depends(get_current_user)):
+    return {
+        "user": {
+            "id": user.id,
+            "email": user.email,
+            "name": user.name,
+            "role": user.role,
+            "allowed_domains": user.allowed_domains
+        }
+    }
 
 class ChatRequest(BaseModel):
     question: str
@@ -41,9 +130,12 @@ def get_config():
     return config.model_dump()
 
 @app.get("/api/domains")
-def get_domains():
+def get_domains(user: User = Depends(get_current_user)):
     engine = ContextEngine()
-    return {"domains": engine.get_domains()}
+    all_domains = engine.get_domains()
+    mgr = AuthManager()
+    accessible = [d for d in all_domains if mgr.can_access_domain(user, d["id"])]
+    return {"domains": accessible}
 
 class RulesUpdateRequest(BaseModel):
     rules: str
@@ -87,16 +179,18 @@ def get_rules(domain: str = "global"):
     return {"rules": engine.get_rules(domain=domain), "domain": domain}
 
 @app.put("/api/rules")
-def update_rules(req: RulesUpdateRequest):
-    engine = ContextEngine()
+def update_rules(req: RulesUpdateRequest, user: User = Depends(require_role(["admin"]))):
     target_domain = req.domain or "global"
+    check_domain_auth(target_domain, user)
+    engine = ContextEngine()
     engine.save_rules(req.rules, domain=target_domain)
     return {"success": True, "rules": engine.get_rules(domain=target_domain), "domain": target_domain}
 
 @app.post("/api/rules/append")
-def append_rule(req: RuleAppendRequest):
-    engine = ContextEngine()
+def append_rule(req: RuleAppendRequest, user: User = Depends(require_role(["admin"]))):
     target_domain = req.domain or "global"
+    check_domain_auth(target_domain, user)
+    engine = ContextEngine()
     engine.append_rule(req.rule, domain=target_domain)
     return {"success": True, "rules": engine.get_rules(domain=target_domain), "domain": target_domain}
 
@@ -106,9 +200,10 @@ def get_metrics(domain: Optional[str] = None):
     return {"metrics": engine.get_metrics(domain=domain), "domain": domain or "all"}
 
 @app.post("/api/metrics")
-def create_or_update_metric(req: MetricCreateRequest):
-    engine = ContextEngine()
+def create_or_update_metric(req: MetricCreateRequest, user: User = Depends(require_role(["admin"]))):
     target_domain = req.domain or "global"
+    check_domain_auth(target_domain, user)
+    engine = ContextEngine()
     metric_data = {
         "name": req.name.strip(),
         "description": req.description.strip() if req.description else "",
@@ -119,7 +214,8 @@ def create_or_update_metric(req: MetricCreateRequest):
     return {"success": True, "metric": metric_data}
 
 @app.delete("/api/metrics/{metric_name}")
-def delete_metric(metric_name: str, domain: str = "global"):
+def delete_metric(metric_name: str, domain: str = "global", user: User = Depends(require_role(["admin"]))):
+    check_domain_auth(domain, user)
     engine = ContextEngine()
     deleted = engine.delete_metric(metric_name, domain=domain)
     if not deleted:
@@ -156,13 +252,15 @@ def preview_table(table_name: str):
 from fastapi.responses import StreamingResponse
 
 @app.post("/api/chat")
-def chat(req: ChatRequest):
+def chat(req: ChatRequest, user: User = Depends(get_current_user)):
+    check_domain_auth(req.domain, user)
     agent = VeroAgent()
     response = agent.ask(req.question, execute=req.execute, domain=req.domain)
     return response
 
 @app.post("/api/chat/stream")
-def chat_stream(req: ChatRequest):
+def chat_stream(req: ChatRequest, user: User = Depends(get_current_user)):
+    check_domain_auth(req.domain, user)
     agent = VeroAgent()
     def event_stream():
         for event in agent.ask_stream(req.question, execute=req.execute, domain=req.domain):
@@ -248,7 +346,7 @@ def estimate_query(req: EstimateRequest):
 from fastapi.staticfiles import StaticFiles
 
 @app.post("/api/query")
-def run_query(req: QueryRequest):
+def run_query(req: QueryRequest, user: User = Depends(require_role(["admin", "analyst"]))):
     config = VeroConfig.load()
     db = DatabaseManager(dialect=config.database.dialect, connection_string=config.database.connection_string)
     engine = ContextEngine()

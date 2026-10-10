@@ -115,6 +115,44 @@ class AuthManager:
             engine_kwargs["poolclass"] = StaticPool
 
         self.engine = create_engine(self.connection_string, **engine_kwargs)
+        self._ensure_tables()
+
+    def _ensure_tables(self) -> None:
+        """Ensures _vero_users and _vero_audit_logs exist in the database."""
+        from sqlalchemy import inspect
+        try:
+            insp = inspect(self.engine)
+            existing = insp.get_table_names()
+            with self.engine.begin() as conn:
+                if "_vero_users" not in existing:
+                    conn.execute(text("""
+                    CREATE TABLE _vero_users (
+                        id VARCHAR(64) PRIMARY KEY,
+                        email VARCHAR(256) NOT NULL UNIQUE,
+                        name VARCHAR(128) NOT NULL,
+                        password_hash VARCHAR(256),
+                        api_key_hash VARCHAR(128),
+                        role VARCHAR(32) NOT NULL DEFAULT 'analyst',
+                        allowed_domains TEXT NOT NULL DEFAULT '["*"]',
+                        is_active BOOLEAN NOT NULL DEFAULT 1,
+                        created_at DATETIME,
+                        last_login_at DATETIME
+                    )
+                    """))
+                if "_vero_audit_logs" not in existing:
+                    conn.execute(text("""
+                    CREATE TABLE _vero_audit_logs (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        user_id VARCHAR(64),
+                        user_email VARCHAR(256),
+                        action VARCHAR(64) NOT NULL,
+                        domain VARCHAR(64),
+                        details_json TEXT,
+                        created_at DATETIME
+                    )
+                    """))
+        except Exception:
+            pass
 
     def get_user_by_id(self, user_id: str) -> Optional[User]:
         with self.engine.connect() as conn:
@@ -186,14 +224,35 @@ class AuthManager:
         role: str = "analyst",
         allowed_domains: Optional[List[str]] = None
     ) -> Tuple[User, str]:
-        """Creates a new user and returns (user, raw_api_key)."""
+        """Creates or updates a user and returns (user, raw_api_key)."""
         clean_email = email.strip().lower()
-        user_id = f"usr_{secrets.token_hex(8)}"
         raw_api_key = generate_api_key()
         api_hash = hash_api_key(raw_api_key)
         pwd_hash = hash_password(password) if password else None
         domains = allowed_domains or ["*"]
 
+        existing = self.get_user_by_email(clean_email)
+        if existing:
+            user, _ = existing
+            with self.engine.begin() as conn:
+                conn.execute(
+                    text("""
+                    UPDATE _vero_users 
+                    SET name = :n, password_hash = COALESCE(:p, password_hash), api_key_hash = :k, role = :r, allowed_domains = :d, is_active = 1
+                    WHERE id = :i
+                    """),
+                    {
+                        "i": user.id,
+                        "n": name,
+                        "p": pwd_hash,
+                        "k": api_hash,
+                        "r": role,
+                        "d": json.dumps(domains)
+                    }
+                )
+            return User(id=user.id, email=clean_email, name=name, role=role, allowed_domains=domains, is_active=True), raw_api_key
+
+        user_id = f"usr_{secrets.token_hex(8)}"
         with self.engine.begin() as conn:
             conn.execute(
                 text("""
