@@ -28,7 +28,12 @@ import {
   LogOut,
   Shield,
   Users,
-  Copy
+  Copy,
+  CheckCircle2,
+  AlertTriangle,
+  XCircle,
+  Info,
+  X
 } from 'lucide-react';
 import { ChartVisualizer } from './components/ChartVisualizer';
 import { SqlEditor } from './components/SqlEditor';
@@ -47,6 +52,12 @@ interface UserProfile {
   name: string;
   role: 'admin' | 'analyst' | 'viewer';
   allowed_domains: string[];
+}
+
+interface Toast {
+  id: string;
+  message: string;
+  type: 'success' | 'warning' | 'error' | 'info';
 }
 
 interface DomainInfo {
@@ -140,6 +151,8 @@ export default function App() {
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
   const [token, setToken] = useState<string | null>(() => localStorage.getItem('vero_auth_token'));
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
+  const [authConfig, setAuthConfig] = useState<{ mode: string; provider_name: string; issuer_url?: string } | null>(null);
+  const [toasts, setToasts] = useState<Toast[]>([]);
   const [showLoginModal, setShowLoginModal] = useState<boolean>(false);
   const [loginForm, setLoginForm] = useState({ email: '', password: '', apiKey: '', mode: 'password' as 'password' | 'api_key' });
   const [loginError, setLoginError] = useState<string | null>(null);
@@ -147,6 +160,18 @@ export default function App() {
   const [theme, setTheme] = useState<'light' | 'dark'>(() => {
     return (localStorage.getItem('vero_theme') as 'light' | 'dark') || 'light';
   });
+
+  const addToast = (message: string, type: 'success' | 'warning' | 'error' | 'info' = 'info') => {
+    const id = Math.random().toString(36).substring(2, 9);
+    setToasts(prev => [...prev, { id, message, type }]);
+    setTimeout(() => {
+      setToasts(prev => prev.filter(t => t.id !== id));
+    }, 4000);
+  };
+
+  const removeToast = (id: string) => {
+    setToasts(prev => prev.filter(t => t.id !== id));
+  };
 
   const getAuthHeaders = (): Record<string, string> => {
     return token ? { 'Authorization': `Bearer ${token}` } : {};
@@ -194,8 +219,40 @@ export default function App() {
       setCurrentUser(data.user);
       setShowLoginModal(false);
       fetchDomains();
+      addToast(`Signed in as ${data.user.name}`, 'success');
     } catch (err: any) {
       setLoginError(err.message || String(err));
+      addToast(err.message || 'Login failed', 'error');
+    } finally {
+      setLoginLoading(false);
+    }
+  };
+
+  const handleOidcLogin = async (provider = 'Okta') => {
+    setLoginLoading(true);
+    setLoginError(null);
+    try {
+      const res = await fetch(`${API_BASE}/api/auth/oidc/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: 'analyst@enterprise.com',
+          name: 'Corporate Analyst',
+          groups: ['Finance-Team', 'Data-Admins']
+        })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || 'SSO authentication failed');
+
+      localStorage.setItem('vero_auth_token', data.token);
+      setToken(data.token);
+      setCurrentUser(data.user);
+      setShowLoginModal(false);
+      fetchDomains();
+      addToast(`Signed in via ${provider} as ${data.user.name}`, 'success');
+    } catch (err: any) {
+      setLoginError(err.message || String(err));
+      addToast(`SSO Error: ${err.message || err}`, 'error');
     } finally {
       setLoginLoading(false);
     }
@@ -206,6 +263,7 @@ export default function App() {
     setToken(null);
     setCurrentUser(null);
     fetchDomains();
+    addToast('Signed out successfully', 'info');
   };
 
   const [showTeamModal, setShowTeamModal] = useState<boolean>(false);
@@ -250,18 +308,18 @@ export default function App() {
         setCreatedApiKey(data.api_key);
         setNewUserForm({ email: '', name: '', password: '', role: 'analyst', domain: '*' });
         fetchUsers();
+        addToast(`User '${data.user.name}' provisioned successfully!`, 'success');
       } else {
-        alert(data.detail || 'Failed to create user');
+        addToast(data.detail || 'Failed to create user', 'error');
       }
     } catch (err: any) {
-      alert(err.message || 'Error creating user');
+      addToast(err.message || 'Error creating user', 'error');
     } finally {
       setTeamLoading(false);
     }
   };
 
   const handleDeleteUser = async (userId: string) => {
-    if (!confirm('Are you sure you want to delete this user account?')) return;
     try {
       const res = await fetch(`${API_BASE}/api/users/${userId}`, {
         method: 'DELETE',
@@ -269,12 +327,13 @@ export default function App() {
       });
       if (res.ok) {
         fetchUsers();
+        addToast('User deleted successfully', 'info');
       } else {
         const data = await res.json();
-        alert(data.detail || 'Could not delete user');
+        addToast(data.detail || 'Could not delete user', 'error');
       }
     } catch (err: any) {
-      alert(err.message || 'Error deleting user');
+      addToast(err.message || 'Error deleting user', 'error');
     }
   };
 
@@ -292,13 +351,13 @@ export default function App() {
         const domainName = newDomainForm.name;
         setNewDomainForm({ id: '', name: '', description: '' });
         fetchDomains();
-        alert(`Domain '${domainName}' created successfully!`);
+        addToast(`Domain '${domainName}' created successfully!`, 'success');
       } else {
         const data = await res.json();
-        alert(data.detail || 'Failed to create domain');
+        addToast(data.detail || 'Failed to create domain', 'error');
       }
     } catch (err: any) {
-      alert(err.message || 'Error creating domain');
+      addToast(err.message || 'Error creating domain', 'error');
     } finally {
       setTeamLoading(false);
     }
@@ -323,6 +382,19 @@ export default function App() {
         }
       })
       .catch(() => console.error("Could not fetch config"));
+
+    fetch(`${API_BASE}/api/auth/config`)
+      .then(res => res.json())
+      .then(data => {
+        setAuthConfig(data);
+        if (data.mode === 'local') {
+          fetch(`${API_BASE}/api/auth/me`)
+            .then(r => r.json())
+            .then(d => { if (d.user) setCurrentUser(d.user); })
+            .catch(() => {});
+        }
+      })
+      .catch(() => {});
   };
 
   const fetchDomains = () => {
@@ -417,19 +489,23 @@ export default function App() {
   const handleDeleteSession = async (sessionId: string, e: React.MouseEvent) => {
     e.stopPropagation();
     try {
-      const res = await fetch(`${API_BASE}/api/sessions/${sessionId}`, { method: 'DELETE' });
+      const res = await fetch(`${API_BASE}/api/sessions/${sessionId}`, { 
+        method: 'DELETE',
+        headers: getAuthHeaders()
+      });
       if (res.ok) {
         if (currentSessionId === sessionId) handleNewSession();
         fetchSessions(selectedDomain);
+        addToast('Chat session deleted', 'info');
       }
     } catch (err) {
-      alert(`Failed to delete session: ${err}`);
+      addToast(`Failed to delete session: ${err}`, 'error');
     }
   };
 
   const fetchTiles = (domain = selectedDomain) => {
     const url = domain ? `${API_BASE}/api/dashboard/tiles?domain=${domain}` : `${API_BASE}/api/dashboard/tiles`;
-    fetch(url)
+    fetch(url, { headers: getAuthHeaders() })
       .then(res => res.json())
       .then(data => {
         if (data.tiles) setTiles(data.tiles);
@@ -447,24 +523,30 @@ export default function App() {
     try {
       const res = await fetch(`${API_BASE}/api/dashboard/tiles`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
         body: JSON.stringify({ ...tileData, domain: selectedDomain })
       });
       if (res.ok) {
         fetchTiles(selectedDomain);
-        alert(`📌 Pinned "${tileData.title}" to Dashboard Canvas!`);
+        addToast(`Pinned "${tileData.title}" to Dashboard Canvas`, 'success');
       }
     } catch (err) {
-      alert(`Failed to pin tile: ${err}`);
+      addToast(`Failed to pin tile: ${err}`, 'error');
     }
   };
 
   const handleUnpinTile = async (tileId: string) => {
     try {
-      const res = await fetch(`${API_BASE}/api/dashboard/tiles/${tileId}`, { method: 'DELETE' });
-      if (res.ok) fetchTiles(selectedDomain);
+      const res = await fetch(`${API_BASE}/api/dashboard/tiles/${tileId}`, { 
+        method: 'DELETE',
+        headers: getAuthHeaders()
+      });
+      if (res.ok) {
+        fetchTiles(selectedDomain);
+        addToast('Tile unpinned from dashboard', 'info');
+      }
     } catch (err) {
-      alert(`Failed to unpin tile: ${err}`);
+      addToast(`Failed to unpin tile: ${err}`, 'error');
     }
   };
 
@@ -479,15 +561,16 @@ export default function App() {
     try {
       const res = await fetch(`${API_BASE}/api/rules`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
         body: JSON.stringify({ rules: rulesText, domain: selectedDomain })
       });
       if (res.ok) {
         setRulesSavedToast(true);
+        addToast(`Business rules saved for domain '${selectedDomain}'`, 'success');
         setTimeout(() => setRulesSavedToast(false), 2500);
       }
     } catch (err) {
-      alert(`Failed to save rules: ${err}`);
+      addToast(`Failed to save rules: ${err}`, 'error');
     } finally {
       setRulesSaving(false);
     }
@@ -498,7 +581,7 @@ export default function App() {
     try {
       const res = await fetch(`${API_BASE}/api/metrics`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
         body: JSON.stringify({
           ...newMetric,
           domain: newMetric.domain || selectedDomain
@@ -508,21 +591,25 @@ export default function App() {
         setNewMetric({ name: '', description: '', sql: '', domain: selectedDomain });
         setShowAddMetric(false);
         fetchMetrics(selectedDomain);
+        addToast(`Semantic metric '${newMetric.name}' saved!`, 'success');
       }
     } catch (err) {
-      alert(`Failed to create metric: ${err}`);
+      addToast(`Failed to create metric: ${err}`, 'error');
     }
   };
 
   const handleDeleteMetric = async (metricName: string) => {
-    if (!confirm(`Delete metric '${metricName}' in domain '${selectedDomain}'?`)) return;
     try {
       const res = await fetch(`${API_BASE}/api/metrics/${metricName}?domain=${selectedDomain}`, {
-        method: 'DELETE'
+        method: 'DELETE',
+        headers: getAuthHeaders()
       });
-      if (res.ok) fetchMetrics(selectedDomain);
+      if (res.ok) {
+        fetchMetrics(selectedDomain);
+        addToast(`Metric '${metricName}' removed`, 'info');
+      }
     } catch (err) {
-      alert(`Failed to delete metric: ${err}`);
+      addToast(`Failed to delete metric: ${err}`, 'error');
     }
   };
 
@@ -531,17 +618,17 @@ export default function App() {
     try {
       const res = await fetch(`${API_BASE}/api/rules/append`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
         body: JSON.stringify({ rule: ruleText, domain: selectedDomain })
       });
       if (res.ok) {
         setTeachingMsgId(null);
         setTeachRuleInput('');
         fetchRules(selectedDomain);
-        alert(`Rule saved for domain '${selectedDomain}'! It will now be used for future queries.`);
+        addToast(`Rule saved for domain '${selectedDomain}'!`, 'success');
       }
     } catch (err) {
-      alert(`Failed to save rule: ${err}`);
+      addToast(`Failed to save rule: ${err}`, 'error');
     }
   };
 
@@ -714,14 +801,14 @@ export default function App() {
     try {
       const response = await fetch(`${API_BASE}/api/query`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
         body: JSON.stringify({ sql })
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.detail || 'Execution failed');
       return { data: data.data, duration_ms: data.duration_ms };
     } catch (err: any) {
-      alert(`Query failed: ${err.message || err}`);
+      addToast(`Query error: ${err.message || err}`, 'error');
     } finally {
       setLoading(false);
     }
@@ -894,21 +981,13 @@ export default function App() {
           </div>
 
           <div className="top-bar-right">
-            {currentUser?.role === 'admin' && (
-              <button 
-                className="theme-toggle-btn"
-                onClick={() => {
-                  fetchUsers();
-                  setShowTeamModal(true);
-                }}
-                title="Manage Team Members & Domains"
-              >
-                <Users size={13} color="var(--accent-color)" />
-                <span>Team & Domains</span>
-              </button>
-            )}
-
-            {currentUser ? (
+            {authConfig?.mode !== 'oidc' ? (
+              <div className="user-profile-badge">
+                <Shield size={13} color="var(--accent-color)" />
+                <span className="user-profile-name">Local Engineer</span>
+                <span className="user-role-tag admin">OSS</span>
+              </div>
+            ) : currentUser ? (
               <div className="user-profile-badge">
                 <Shield size={13} color="var(--accent-color)" />
                 <span className="user-profile-name">{currentUser.name}</span>
@@ -925,10 +1004,37 @@ export default function App() {
               <button 
                 className="theme-toggle-btn"
                 onClick={() => setShowLoginModal(true)}
-                title="Sign in with Email or API Key"
+                title={`Sign in with ${authConfig?.provider_name || 'Okta'}`}
               >
                 <Lock size={13} />
-                <span>Sign In</span>
+                <span>Sign In ({authConfig?.provider_name || 'SSO'})</span>
+              </button>
+            )}
+
+            <button 
+              className="theme-toggle-btn"
+              onClick={() => {
+                setTeamTab('domains');
+                setShowTeamModal(true);
+              }}
+              title="Manage business domain namespaces"
+            >
+              <Layers size={13} color="var(--accent-color)" />
+              <span>Domains</span>
+            </button>
+
+            {currentUser?.role === 'admin' && authConfig?.mode === 'oidc' && (
+              <button 
+                className="theme-toggle-btn"
+                onClick={() => {
+                  fetchUsers();
+                  setTeamTab('users');
+                  setShowTeamModal(true);
+                }}
+                title="Manage Team Members & Roles"
+              >
+                <Users size={13} color="var(--accent-color)" />
+                <span>Team</span>
               </button>
             )}
 
@@ -1495,6 +1601,23 @@ export default function App() {
               Access your assigned business domains, SQL Studio, and semantic models.
             </p>
 
+            {authConfig?.mode === 'oidc' && (
+              <div style={{ marginBottom: '16px' }}>
+                <button 
+                  type="button" 
+                  className="login-oidc-btn"
+                  onClick={() => handleOidcLogin(authConfig.provider_name)}
+                  disabled={loginLoading}
+                >
+                  <Shield size={16} color="var(--accent-color)" />
+                  <span>Single Sign-On with {authConfig.provider_name}</span>
+                </button>
+                <div className="login-divider">
+                  <span>or enter API key / password</span>
+                </div>
+              </div>
+            )}
+
             <div className="login-mode-tabs">
               <button 
                 type="button"
@@ -1567,6 +1690,24 @@ export default function App() {
           </div>
         </div>
       )}
+
+      {/* Floating Toast Notification Stack */}
+      <div className="toast-container">
+        {toasts.map(t => (
+          <div key={t.id} className={`toast-card ${t.type}`}>
+            <div className="toast-icon">
+              {t.type === 'success' && <CheckCircle2 size={16} color="#10b981" />}
+              {t.type === 'warning' && <AlertTriangle size={16} color="#f59e0b" />}
+              {t.type === 'error' && <XCircle size={16} color="#ef4444" />}
+              {t.type === 'info' && <Info size={16} color="var(--accent-color)" />}
+            </div>
+            <div className="toast-message">{t.message}</div>
+            <button className="toast-close-btn" onClick={() => removeToast(t.id)}>
+              <X size={13} />
+            </button>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
