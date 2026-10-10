@@ -19,7 +19,9 @@ import {
   BookmarkPlus,
   Save,
   Check,
-  Layers
+  Layers,
+  MessageSquarePlus,
+  MessageSquare
 } from 'lucide-react';
 import { ChartVisualizer } from './components/ChartVisualizer';
 import { SqlEditor } from './components/SqlEditor';
@@ -34,6 +36,13 @@ interface DomainInfo {
   id: string;
   name: string;
   description: string;
+}
+
+interface SessionInfo {
+  id: string;
+  title: string;
+  domain: string;
+  created_at: string;
 }
 
 interface SemanticMetric {
@@ -102,6 +111,8 @@ export default function App() {
   const [newMetric, setNewMetric] = useState({ name: '', description: '', sql: '', domain: 'global' });
   const [teachingMsgId, setTeachingMsgId] = useState<string | null>(null);
   const [teachRuleInput, setTeachRuleInput] = useState<string>('');
+  const [sessions, setSessions] = useState<SessionInfo[]>([]);
+  const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
   const [theme, setTheme] = useState<'light' | 'dark'>(() => {
     return (localStorage.getItem('vero_theme') as 'light' | 'dark') || 'light';
   });
@@ -174,6 +185,59 @@ export default function App() {
         if (data.rules !== undefined) setRulesText(data.rules);
       })
       .catch(() => console.error("Could not fetch rules"));
+  };
+
+  const fetchSessions = (domain = selectedDomain) => {
+    const url = domain ? `${API_BASE}/api/sessions?domain=${domain}` : `${API_BASE}/api/sessions`;
+    fetch(url)
+      .then(res => res.json())
+      .then(data => {
+        if (data.sessions) setSessions(data.sessions);
+      })
+      .catch(() => console.error("Could not fetch sessions"));
+  };
+
+  const handleSelectSession = (sessionId: string) => {
+    setCurrentSessionId(sessionId);
+    fetch(`${API_BASE}/api/sessions/${sessionId}/messages`)
+      .then(res => res.json())
+      .then(data => {
+        if (data.messages && data.messages.length > 0) {
+          setMessages(data.messages);
+        }
+      })
+      .catch(() => console.error("Could not fetch session messages"));
+    setActiveTab('chat');
+  };
+
+  const handleNewSession = () => {
+    setCurrentSessionId(null);
+    setMessages([
+      {
+        id: '1',
+        sender: 'assistant',
+        text: 'Hello! I am Vero, your open-source analytics agent. Ask any analytical question, or click any table on the left to preview it.',
+        suggested_followups: [
+          'Show total revenue by customer',
+          'What is our annual recurring revenue?',
+          'List active users who signed up this year'
+        ]
+      }
+    ]);
+    setActiveTab('chat');
+  };
+
+  const handleDeleteSession = async (sessionId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    try {
+      const res = await fetch(`${API_BASE}/api/sessions/${sessionId}`, { method: 'DELETE' });
+      if (res.ok) {
+        if (currentSessionId === sessionId) handleNewSession();
+        fetchSessions(selectedDomain);
+      }
+    } catch (err) {
+      alert(`Failed to delete session: ${err}`);
+    }
   };
 
   const handleSaveRules = async () => {
@@ -256,6 +320,7 @@ export default function App() {
     fetchSchemas(selectedDomain);
     fetchMetrics(selectedDomain);
     fetchRules(selectedDomain);
+    fetchSessions(selectedDomain);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedDomain]);
 
@@ -293,6 +358,33 @@ export default function App() {
     setInput('');
     setLoading(true);
 
+    let activeSessId = currentSessionId;
+    if (!activeSessId) {
+      try {
+        const sessRes = await fetch(`${API_BASE}/api/sessions`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ title: textToSend.slice(0, 36), domain: selectedDomain })
+        });
+        if (sessRes.ok) {
+          const sessData = await sessRes.json();
+          activeSessId = sessData.id;
+          setCurrentSessionId(activeSessId);
+          fetchSessions(selectedDomain);
+        }
+      } catch (e) {
+        console.error("Session creation error:", e);
+      }
+    }
+
+    if (activeSessId) {
+      fetch(`${API_BASE}/api/sessions/${activeSessId}/messages`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(userMessage)
+      }).catch(err => console.error("Could not persist message:", err));
+    }
+
     try {
       const response = await fetch(`${API_BASE}/api/chat/stream`, {
         method: 'POST',
@@ -325,23 +417,31 @@ export default function App() {
                   ));
                 } else if (event.type === 'complete') {
                   const data = event.result;
-                  setMessages(prev => prev.map(m => 
-                    m.id === assistantMsgId ? {
-                      id: assistantMsgId,
-                      sender: 'assistant',
-                      text: data.explanation || 'Here is the query and data you requested.',
-                      thought: data.thought,
-                      sql: data.sql,
-                      tables_used: data.tables_used,
-                      suggested_followups: data.suggested_followups,
-                      duration_ms: data.duration_ms,
-                      reflection_steps: data.reflection_steps,
-                      data: data.data,
-                      suggested_visualization: data.suggested_visualization,
-                      error: data.error,
-                      is_streaming: false
-                    } : m
-                  ));
+                  const completedAssistantMsg: Message = {
+                    id: assistantMsgId,
+                    sender: 'assistant',
+                    text: data.explanation || 'Here is the query and data you requested.',
+                    thought: data.thought,
+                    sql: data.sql,
+                    tables_used: data.tables_used,
+                    suggested_followups: data.suggested_followups,
+                    duration_ms: data.duration_ms,
+                    reflection_steps: data.reflection_steps,
+                    data: data.data,
+                    suggested_visualization: data.suggested_visualization,
+                    error: data.error,
+                    is_streaming: false
+                  };
+
+                  setMessages(prev => prev.map(m => m.id === assistantMsgId ? completedAssistantMsg : m));
+
+                  if (activeSessId) {
+                    fetch(`${API_BASE}/api/sessions/${activeSessId}/messages`, {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify(completedAssistantMsg)
+                    }).catch(err => console.error("Could not persist assistant message:", err));
+                  }
                 }
               } catch (parseErr) {
                 console.error("Error parsing stream chunk:", parseErr);
@@ -459,6 +559,32 @@ export default function App() {
             <span>Rules & Context</span>
           </div>
         </nav>
+
+        {/* Chat Sessions / Threads */}
+        <div className="sidebar-sessions-section">
+          <button className="new-chat-btn" onClick={handleNewSession} title="Start new conversation">
+            <MessageSquarePlus size={13} />
+            <span>New Chat</span>
+          </button>
+          {sessions.map(s => (
+            <div 
+              key={s.id} 
+              className={`session-row ${currentSessionId === s.id ? 'active' : ''}`}
+              onClick={() => handleSelectSession(s.id)}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0, flex: 1 }}>
+                <MessageSquare size={12} color="var(--accent-color)" />
+                <span className="session-title">{s.title || 'Untitled Session'}</span>
+              </div>
+              <Trash2 
+                size={11} 
+                color="var(--text-muted)" 
+                style={{ cursor: 'pointer', opacity: 0.7 }}
+                onClick={(e) => handleDeleteSession(s.id, e)}
+              />
+            </div>
+          ))}
+        </div>
 
         <div className="schemas-section">
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
@@ -688,6 +814,7 @@ export default function App() {
             dialect={dialect}
             onExecute={handleExecuteSql}
             loading={loading}
+            apiBase={API_BASE}
           />
         )}
 
