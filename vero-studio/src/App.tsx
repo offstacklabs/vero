@@ -96,6 +96,7 @@ interface Message {
   bytes_formatted?: string;
   cost_usd?: number;
   cost_guard_passed?: boolean;
+  cache_hit?: boolean;
   telemetry?: any;
   data?: {
     columns: string[];
@@ -787,6 +788,7 @@ export default function App() {
                     bytes_formatted: data.bytes_formatted,
                     cost_usd: data.cost_usd,
                     cost_guard_passed: data.cost_guard_passed,
+                    cache_hit: data.cache_hit,
                     telemetry: data.telemetry,
                     data: data.data,
                     suggested_visualization: data.suggested_visualization,
@@ -1108,6 +1110,7 @@ export default function App() {
                       bytesFormatted={msg.bytes_formatted}
                       costUsd={msg.cost_usd}
                       telemetry={msg.telemetry}
+                      cacheHit={msg.cache_hit}
                     />
                   )}
 
@@ -1122,6 +1125,7 @@ export default function App() {
                       costUsd={msg.cost_usd}
                       costGuardPassed={msg.cost_guard_passed}
                       totalTokens={msg.telemetry?.total_tokens}
+                      cacheHit={msg.cache_hit}
                       onOpenInEditor={handleOpenInEditor}
                       onPin={() => handlePinTile({
                         title: msg.text.slice(0, 36) || 'Query Result',

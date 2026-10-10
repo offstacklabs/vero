@@ -299,6 +299,7 @@ class VeroAgent:
                 query_result = self.db_manager.execute_query(sql, enforce_cost_guard=True)
                 wh_dur = round((time.time() - start_time) * 1000, 1)
                 spans["warehouse_ms"] += wh_dur
+                
                 result["data"] = query_result
                 result["duration_ms"] = wh_dur
                 result["sql"] = sql
@@ -308,6 +309,7 @@ class VeroAgent:
                 result["tables_used"] = plan.get("tables_used", [])
                 result["suggested_followups"] = plan.get("suggested_followups", [])
                 result["error"] = None
+                result["cache_hit"] = query_result.get("cache_hit", False)
                 break  # Query succeeded!
             except Exception as e:
                 err_msg = str(e)
@@ -520,6 +522,7 @@ class VeroAgent:
                 query_result = self.db_manager.execute_query(sql, enforce_cost_guard=True)
                 wh_dur = round((time.time() - start_time) * 1000, 1)
                 spans["warehouse_ms"] += wh_dur
+                
                 result["data"] = query_result
                 result["duration_ms"] = wh_dur
                 result["sql"] = sql
@@ -529,6 +532,7 @@ class VeroAgent:
                 result["tables_used"] = plan.get("tables_used", [])
                 result["suggested_followups"] = plan.get("suggested_followups", [])
                 result["error"] = None
+                result["cache_hit"] = query_result.get("cache_hit", False)
                 break
             except Exception as e:
                 err_msg = str(e)

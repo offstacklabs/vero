@@ -10,6 +10,7 @@ interface SqlCardProps {
   costUsd?: number;
   costGuardPassed?: boolean;
   totalTokens?: number;
+  cacheHit?: boolean;
   onOpenInEditor?: (sql: string) => void;
   onPin?: () => void;
 }
@@ -23,6 +24,7 @@ export const SqlCard: React.FC<SqlCardProps> = ({
   costUsd,
   costGuardPassed,
   totalTokens,
+  cacheHit,
   onOpenInEditor,
   onPin
 }) => {
@@ -42,6 +44,12 @@ export const SqlCard: React.FC<SqlCardProps> = ({
             <Database size={11} />
             <span>{dialect}</span>
           </span>
+          {cacheHit && (
+            <span className="sql-stat-tag" style={{ color: '#10b981', borderColor: 'rgba(16, 185, 129, 0.3)', backgroundColor: 'rgba(16, 185, 129, 0.1)', fontWeight: 600 }}>
+              <Zap size={11} />
+              <span>Cached</span>
+            </span>
+          )}
           {totalTokens !== undefined && totalTokens > 0 && (
             <span className="sql-stat-tag" title="LLM Tokens consumed">
               <Coins size={11} />

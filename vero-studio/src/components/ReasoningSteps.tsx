@@ -47,6 +47,7 @@ interface ReasoningStepsProps {
   bytesFormatted?: string;
   costUsd?: number;
   telemetry?: ExecutionTelemetry;
+  cacheHit?: boolean;
 }
 
 export const ReasoningSteps: React.FC<ReasoningStepsProps> = ({
@@ -57,7 +58,8 @@ export const ReasoningSteps: React.FC<ReasoningStepsProps> = ({
   reflectionSteps = [],
   bytesFormatted,
   costUsd,
-  telemetry
+  telemetry,
+  cacheHit
 }) => {
   const [expanded, setExpanded] = useState(false);
 
@@ -73,6 +75,12 @@ export const ReasoningSteps: React.FC<ReasoningStepsProps> = ({
         </div>
 
         <div className="reasoning-badges">
+          {cacheHit && (
+            <span className="trace-pill" style={{ color: '#10b981', borderColor: 'rgba(16, 185, 129, 0.3)', backgroundColor: 'rgba(16, 185, 129, 0.1)', fontWeight: 600 }}>
+              <Zap size={11} />
+              <span>Cached</span>
+            </span>
+          )}
           {reflectionSteps && reflectionSteps.length > 0 && (
             <span className="trace-pill" style={{ color: '#f59e0b', borderColor: 'rgba(245, 158, 11, 0.3)', backgroundColor: 'rgba(245, 158, 11, 0.1)' }}>
               <Wrench size={11} />
