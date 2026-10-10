@@ -28,6 +28,10 @@ dependencies = [
 [project.scripts]
 vero = "vero.cli:app"
 
+[project.urls]
+Homepage = "https://verodata.dev"
+Documentation = "https://docs.verodata.dev"
+
 [tool.hatch.build.targets.wheel]
 packages = ["vero"]
 

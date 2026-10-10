@@ -231,7 +231,7 @@ def test_server_observability_stats():
 def test_server_auth_and_rbac():
     client = TestClient(app)
     # 1. Login with default admin
-    login_res = client.post("/api/auth/login", json={"email": "admin@vero.local", "password": "admin"})
+    login_res = client.post("/api/auth/login", json={"email": "admin@verodata.dev", "password": "admin"})
     assert login_res.status_code == 200
     token = login_res.json()["token"]
     assert token is not None

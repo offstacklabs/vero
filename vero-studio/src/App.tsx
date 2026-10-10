@@ -1228,7 +1228,7 @@ export default function App() {
                     <input 
                       type="email" 
                       className="login-input"
-                      placeholder="admin@vero.local"
+                      placeholder="admin@verodata.dev"
                       value={loginForm.email}
                       onChange={e => setLoginForm({ ...loginForm, email: e.target.value })}
                       required
@@ -1269,7 +1269,7 @@ export default function App() {
               </button>
 
               <div className="login-hint">
-                Default credentials: <code>admin@vero.local</code> / <code>admin</code>
+                Default credentials: <code>admin@verodata.dev</code> / <code>admin</code>
               </div>
             </form>
           </div>

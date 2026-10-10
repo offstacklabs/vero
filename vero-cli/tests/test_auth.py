@@ -65,7 +65,7 @@ def test_database_auth_manager_and_rbac(tmp_path):
     # 1. Seed initial admin
     admin, admin_key = mgr.seed_default_admin()
     assert admin.role == "admin"
-    assert admin.email == "admin@vero.local"
+    assert admin.email == "admin@verodata.dev"
     assert admin_key is not None
 
     # Authenticate via admin API key
@@ -74,7 +74,7 @@ def test_database_auth_manager_and_rbac(tmp_path):
     assert authed_admin.id == admin.id
 
     # Authenticate via admin password
-    authed_pwd = mgr.authenticate("admin@vero.local", "admin")
+    authed_pwd = mgr.authenticate("admin@verodata.dev", "admin")
     assert authed_pwd is not None
     assert authed_pwd.id == admin.id
 

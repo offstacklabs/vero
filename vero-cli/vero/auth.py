@@ -323,24 +323,22 @@ class AuthManager:
     def seed_default_admin(self) -> Tuple[User, Optional[str]]:
         """Ensures an initial admin user exists so the system is immediately usable."""
         with self.engine.connect() as conn:
-            count = conn.execute(text("SELECT COUNT(*) FROM _vero_users")).scalar() or 0
-            if count > 0:
-                admin_row = conn.execute(
-                    text("SELECT id, email, name, role, allowed_domains, is_active FROM _vero_users WHERE role = 'admin' LIMIT 1")
-                ).fetchone()
-                if admin_row:
-                    return User(
-                        id=admin_row[0],
-                        email=admin_row[1],
-                        name=admin_row[2],
-                        role=admin_row[3],
-                        allowed_domains=json.loads(admin_row[4]) if admin_row[4] else ["*"],
-                        is_active=bool(admin_row[5])
-                    ), None
+            admin_row = conn.execute(
+                text("SELECT id, email, name, role, allowed_domains, is_active FROM _vero_users WHERE email = 'admin@verodata.dev' LIMIT 1")
+            ).fetchone()
+            if admin_row:
+                return User(
+                    id=admin_row[0],
+                    email=admin_row[1],
+                    name=admin_row[2],
+                    role=admin_row[3],
+                    allowed_domains=json.loads(admin_row[4]) if admin_row[4] else ["*"],
+                    is_active=bool(admin_row[5])
+                ), None
 
         # Create default admin
         return self.create_user(
-            email="admin@vero.local",
+            email="admin@verodata.dev",
             name="Vero Administrator",
             password="admin",
             role="admin",
