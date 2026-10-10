@@ -144,6 +144,10 @@ export default function App() {
   const [rulesSaving, setRulesSaving] = useState(false);
   const [rulesSavedToast, setRulesSavedToast] = useState(false);
   const [showAddMetric, setShowAddMetric] = useState(false);
+  const [showImportMetricModal, setShowImportMetricModal] = useState(false);
+  const [importMetricSource, setImportMetricSource] = useState<'lookml' | 'dbt' | 'cube'>('lookml');
+  const [importMetricContent, setImportMetricContent] = useState('');
+  const [importMetricLoading, setImportMetricLoading] = useState(false);
   const [newMetric, setNewMetric] = useState({ name: '', description: '', sql: '', domain: 'global' });
   const [teachingMsgId, setTeachingMsgId] = useState<string | null>(null);
   const [teachRuleInput, setTeachRuleInput] = useState<string>('');
@@ -595,6 +599,35 @@ export default function App() {
       }
     } catch (err) {
       addToast(`Failed to create metric: ${err}`, 'error');
+    }
+  };
+
+  const handleImportMetrics = async () => {
+    if (!importMetricContent.trim()) return;
+    setImportMetricLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/metrics/import`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+        body: JSON.stringify({
+          source: importMetricSource,
+          content: importMetricContent,
+          domain: selectedDomain
+        })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setShowImportMetricModal(false);
+        setImportMetricContent('');
+        fetchMetrics(selectedDomain);
+        addToast(`Successfully imported ${data.imported_count} metrics from ${importMetricSource.toUpperCase()}`, 'success');
+      } else {
+        addToast(data.detail || 'Failed to import metrics', 'error');
+      }
+    } catch (err: any) {
+      addToast(`Failed to import metrics: ${err.message || err}`, 'error');
+    } finally {
+      setImportMetricLoading(false);
     }
   };
 
@@ -1260,18 +1293,82 @@ export default function App() {
           <div className="metrics-viewer">
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
               <h2 style={{ fontSize: '20px' }}>Semantic Layer (Metrics)</h2>
-              <button 
-                className="save-rules-btn"
-                style={{ padding: '6px 12px', fontSize: '12px' }}
-                onClick={() => setShowAddMetric(!showAddMetric)}
-              >
-                <Plus size={14} />
-                <span>{showAddMetric ? 'Cancel' : 'Add Metric'}</span>
-              </button>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <button 
+                  className="editor-tool-btn"
+                  onClick={() => setShowImportMetricModal(true)}
+                  title="Import metrics from Looker LookML, dbt, or Cube"
+                >
+                  <RefreshCw size={13} />
+                  <span>Import External Metrics</span>
+                </button>
+                <button 
+                  className="save-rules-btn"
+                  style={{ padding: '6px 12px', fontSize: '12px' }}
+                  onClick={() => setShowAddMetric(!showAddMetric)}
+                >
+                  <Plus size={14} />
+                  <span>{showAddMetric ? 'Cancel' : 'Add Metric'}</span>
+                </button>
+              </div>
             </div>
             <p style={{ color: 'var(--text-muted)', marginBottom: '20px', fontSize: '13.5px' }}>
               These business metrics are automatically injected into the agent's context, grounding the LLM in your warehouse logic.
             </p>
+
+            {/* Semantic Importer Modal */}
+            {showImportMetricModal && (
+              <div className="login-modal-overlay">
+                <div className="login-modal-card">
+                  <div className="login-modal-header">
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <Database size={18} color="var(--accent-color)" />
+                      <h3 className="login-modal-title">Import Semantic Layer</h3>
+                    </div>
+                    <button className="login-close-btn" onClick={() => setShowImportMetricModal(false)}>×</button>
+                  </div>
+                  
+                  <p className="login-modal-subtitle">
+                    Paste the contents of your LookML, dbt manifest, or Cube schema file below.
+                  </p>
+
+                  <div className="login-form">
+                    <div className="login-input-group">
+                      <label className="login-label">Source Framework</label>
+                      <select 
+                        className="login-input"
+                        value={importMetricSource}
+                        onChange={(e) => setImportMetricSource(e.target.value as any)}
+                      >
+                        <option value="lookml">Looker (LookML .lkml)</option>
+                        <option value="dbt">dbt (manifest.json)</option>
+                        <option value="cube">Cube.js (Schema YAML/JSON)</option>
+                      </select>
+                    </div>
+
+                    <div className="login-input-group">
+                      <label className="login-label">File Content</label>
+                      <textarea 
+                        className="login-input"
+                        style={{ height: '200px', fontFamily: 'var(--font-mono)', fontSize: '11px', resize: 'vertical' }}
+                        value={importMetricContent}
+                        onChange={(e) => setImportMetricContent(e.target.value)}
+                        placeholder={`Paste ${importMetricSource.toUpperCase()} content here...`}
+                        spellCheck={false}
+                      />
+                    </div>
+
+                    <button 
+                      className="login-submit-btn" 
+                      onClick={handleImportMetrics}
+                      disabled={importMetricLoading || !importMetricContent.trim()}
+                    >
+                      {importMetricLoading ? 'Importing...' : 'Sync Metrics to Vero'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Metric Creator Form */}
             {showAddMetric && (

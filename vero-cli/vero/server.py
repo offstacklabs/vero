@@ -268,6 +268,11 @@ class MetricCreateRequest(BaseModel):
     sql: str
     domain: Optional[str] = "global"
 
+class MetricImportRequest(BaseModel):
+    source: str  # "lookml", "dbt", "cube"
+    content: str
+    domain: Optional[str] = "global"
+
 class AnnotationRequest(BaseModel):
     annotation: str
 
@@ -329,6 +334,30 @@ def create_or_update_metric(req: MetricCreateRequest, user: User = Depends(requi
     }
     engine.save_metric(metric_data, domain=target_domain)
     return {"success": True, "metric": metric_data}
+
+@app.post("/api/metrics/import")
+def import_metrics(req: MetricImportRequest, user: User = Depends(require_role(["admin"]))):
+    target_domain = req.domain or "global"
+    check_domain_auth(target_domain, user)
+    from vero.semantic import SemanticImporter
+    
+    importer = SemanticImporter()
+    source = req.source.lower()
+    
+    try:
+        if source == "lookml":
+            metrics = importer.import_lookml(req.content, domain=target_domain)
+        elif source == "dbt":
+            metrics = importer.import_dbt(req.content, domain=target_domain)
+        elif source == "cube":
+            metrics = importer.import_cube(req.content, domain=target_domain)
+        else:
+            raise ValueError(f"Unsupported source format: {source}")
+            
+        count = importer.sync_to_vero(metrics, domain=target_domain)
+        return {"success": True, "imported_count": count, "domain": target_domain}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 @app.delete("/api/metrics/{metric_name}")
 def delete_metric(metric_name: str, domain: str = "global", user: User = Depends(require_role(["admin"]))):
