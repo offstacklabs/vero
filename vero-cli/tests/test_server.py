@@ -190,3 +190,24 @@ def test_server_dashboard_tiles():
     # 3. Unpin tile
     unpin_res = client.delete(f"/api/dashboard/tiles/{tile_id}")
     assert unpin_res.status_code == 200
+
+def test_server_estimate_query():
+    client = TestClient(app)
+    with patch("vero.server.DatabaseManager") as mock_db_cls:
+        mock_db = MagicMock()
+        mock_db.estimate_query_cost.return_value = {
+            "valid": True,
+            "dialect": "bigquery",
+            "bytes_scanned": 104857600,
+            "bytes_formatted": "100.0 MB",
+            "cost_usd": 0.0006,
+            "cost_guard_passed": True
+        }
+        mock_db_cls.return_value = mock_db
+
+        res = client.post("/api/query/estimate", json={"sql": "SELECT * FROM dataset.table"})
+        assert res.status_code == 200
+        data = res.json()
+        assert data["valid"] is True
+        assert data["bytes_formatted"] == "100.0 MB"
+        assert data["cost_guard_passed"] is True

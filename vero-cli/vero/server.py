@@ -235,6 +235,16 @@ def unpin_dashboard_tile(tile_id: str):
         raise HTTPException(status_code=404, detail="Dashboard tile not found")
     return {"success": True, "unpinned": tile_id}
 
+class EstimateRequest(BaseModel):
+    sql: str
+
+@app.post("/api/query/estimate")
+def estimate_query(req: EstimateRequest):
+    config = VeroConfig.load()
+    db = DatabaseManager(dialect=config.database.dialect, connection_string=config.database.connection_string)
+    res = db.estimate_query_cost(req.sql)
+    return res
+
 from fastapi.staticfiles import StaticFiles
 
 @app.post("/api/query")
@@ -244,7 +254,7 @@ def run_query(req: QueryRequest):
     engine = ContextEngine()
     start_time = time.time()
     try:
-        data = db.execute_query(req.sql, limit=req.limit or 100)
+        data = db.execute_query(req.sql, limit=req.limit or 100, enforce_cost_guard=True)
         duration_ms = round((time.time() - start_time) * 1000, 1)
         row_count = data.get("row_count") or len(data.get("rows", []))
         engine.record_query_run(sql=req.sql, duration_ms=duration_ms, row_count=row_count, error=None)

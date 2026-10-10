@@ -193,16 +193,42 @@ class VeroAgent:
                     result["sql"] = sql
                     break
 
+            # Step 2: Cost Guard Estimation (Pre-execution)
+            estimate = self.db_manager.estimate_query_cost(sql)
+            result["bytes_scanned"] = estimate.get("bytes_scanned", 0)
+            result["bytes_formatted"] = estimate.get("bytes_formatted", "0 B")
+            result["cost_usd"] = estimate.get("cost_usd", 0.0)
+            result["cost_guard_passed"] = estimate.get("cost_guard_passed", True)
+
+            if estimate.get("valid") and not estimate.get("cost_guard_passed", True):
+                from vero.db import format_bytes
+                max_bytes = estimate.get("max_allowed_bytes", 10 * 1024 * 1024 * 1024)
+                err_msg = f"Cost Guard Blocked: Query projected to scan {estimate['bytes_formatted']}, exceeding safety limit of {format_bytes(max_bytes)}. Please add date/partition filters."
+                reflection_steps.append({
+                    "attempt": attempt + 1,
+                    "failed_sql": sql,
+                    "error": err_msg,
+                    "thought": plan.get("thought", "")
+                })
+                if attempt < max_retries:
+                    attempt += 1
+                    plan = self.reflect_and_heal(question, sql, err_msg, attempt, domain=domain)
+                    continue
+                else:
+                    result["error"] = err_msg
+                    result["sql"] = sql
+                    break
+
             if not execute:
                 result["sql"] = sql
                 result["thought"] = plan.get("thought", "")
                 result["explanation"] = plan.get("explanation", "")
                 break
 
-            # Step 2: Database Execution
+            # Step 3: Database Execution
             start_time = time.time()
             try:
-                query_result = self.db_manager.execute_query(sql)
+                query_result = self.db_manager.execute_query(sql, enforce_cost_guard=True)
                 result["data"] = query_result
                 result["duration_ms"] = round((time.time() - start_time) * 1000, 1)
                 result["sql"] = sql
@@ -304,6 +330,52 @@ class VeroAgent:
                     result["sql"] = sql
                     break
 
+            # Step 2: Cost Guard Estimation
+            estimate = self.db_manager.estimate_query_cost(sql)
+            result["bytes_scanned"] = estimate.get("bytes_scanned", 0)
+            result["bytes_formatted"] = estimate.get("bytes_formatted", "0 B")
+            result["cost_usd"] = estimate.get("cost_usd", 0.0)
+            result["cost_guard_passed"] = estimate.get("cost_guard_passed", True)
+
+            scan_label = estimate.get("bytes_formatted", "0 B")
+            if estimate.get("cost_usd", 0) > 0:
+                scan_label += f" (~${estimate['cost_usd']:.4f})"
+            guard_status = "PASSED" if estimate.get("cost_guard_passed", True) else "BLOCKED"
+            yield {
+                "type": "stage",
+                "stage": "cost_guard",
+                "message": f"Cost Guard ({guard_status}): Estimated scan {scan_label}",
+                "bytes_scanned": estimate.get("bytes_scanned", 0),
+                "cost_usd": estimate.get("cost_usd", 0.0),
+                "cost_guard_passed": estimate.get("cost_guard_passed", True)
+            }
+
+            if estimate.get("valid") and not estimate.get("cost_guard_passed", True):
+                from vero.db import format_bytes
+                max_bytes = estimate.get("max_allowed_bytes", 10 * 1024 * 1024 * 1024)
+                err_msg = f"Cost Guard Blocked: Query projected to scan {estimate['bytes_formatted']}, exceeding safety limit of {format_bytes(max_bytes)}. Please add date/partition filters."
+                reflection_steps.append({
+                    "attempt": attempt + 1,
+                    "failed_sql": sql,
+                    "error": err_msg,
+                    "thought": plan.get("thought", "")
+                })
+                if attempt < max_retries:
+                    attempt += 1
+                    yield {
+                        "type": "stage",
+                        "stage": "reflecting",
+                        "attempt": attempt,
+                        "error": err_msg,
+                        "message": f"Cost Guard limit exceeded ({estimate['bytes_formatted']}). Self-repairing with partition filters (attempt {attempt})..."
+                    }
+                    plan = self.reflect_and_heal(question, sql, err_msg, attempt, domain=domain)
+                    continue
+                else:
+                    result["error"] = err_msg
+                    result["sql"] = sql
+                    break
+
             if not execute:
                 result["sql"] = sql
                 result["thought"] = plan.get("thought", "")
@@ -319,7 +391,7 @@ class VeroAgent:
 
             start_time = time.time()
             try:
-                query_result = self.db_manager.execute_query(sql)
+                query_result = self.db_manager.execute_query(sql, enforce_cost_guard=True)
                 result["data"] = query_result
                 result["duration_ms"] = round((time.time() - start_time) * 1000, 1)
                 result["sql"] = sql
