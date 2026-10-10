@@ -562,9 +562,34 @@ class DatabaseContextStorage(ContextStorage):
             pass
 
     def migrate(self) -> Dict[str, Any]:
-        """Applies schema migrations to centralized database."""
-        self._run_migrations()
-        return {"status": "ok", "backend": "database", "message": "All metadata table migrations applied successfully."}
+        """Applies Alembic schema migrations to centralized database."""
+        from alembic.config import Config
+        from alembic import command
+        from pathlib import Path
+
+        try:
+            # Locate alembic.ini from workspace or package root
+            root = Path(__file__).parent.parent
+            ini_path = root / "alembic.ini"
+            if not ini_path.exists():
+                ini_path = Path.cwd() / "alembic.ini"
+
+            alembic_cfg = Config(str(ini_path))
+            alembic_cfg.set_main_option("sqlalchemy.url", self.connection_string)
+            command.upgrade(alembic_cfg, "head")
+            return {
+                "status": "ok",
+                "backend": "database",
+                "message": "Alembic migrations applied successfully to revision: head."
+            }
+        except Exception as e:
+            # Fallback to internal inspector migration
+            self._run_migrations()
+            return {
+                "status": "ok",
+                "backend": "database",
+                "message": f"Schema synchronized with fallback runner ({str(e)})"
+            }
 
     def _seed_default_domains(self) -> None:
         defaults = [
