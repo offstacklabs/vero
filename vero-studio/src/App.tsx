@@ -26,7 +26,9 @@ import {
   Activity,
   Lock,
   LogOut,
-  Shield
+  Shield,
+  Users,
+  Copy
 } from 'lucide-react';
 import { ChartVisualizer } from './components/ChartVisualizer';
 import { SqlEditor } from './components/SqlEditor';
@@ -204,6 +206,102 @@ export default function App() {
     setToken(null);
     setCurrentUser(null);
     fetchDomains();
+  };
+
+  const [showTeamModal, setShowTeamModal] = useState<boolean>(false);
+  const [teamTab, setTeamTab] = useState<'users' | 'domains'>('users');
+  const [userList, setUserList] = useState<UserProfile[]>([]);
+  const [newUserForm, setNewUserForm] = useState({ email: '', name: '', password: '', role: 'analyst', domain: '*' });
+  const [createdApiKey, setCreatedApiKey] = useState<string | null>(null);
+  const [copiedKey, setCopiedKey] = useState(false);
+  const [newDomainForm, setNewDomainForm] = useState({ id: '', name: '', description: '' });
+  const [teamLoading, setTeamLoading] = useState(false);
+
+  const fetchUsers = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/api/users`, { headers: getAuthHeaders() });
+      if (res.ok) {
+        const data = await res.json();
+        setUserList(data.users || []);
+      }
+    } catch (e) {
+      console.error("Could not fetch users:", e);
+    }
+  };
+
+  const handleCreateUser = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setTeamLoading(true);
+    try {
+      const domainsArr = newUserForm.domain === '*' ? ['*'] : [newUserForm.domain];
+      const res = await fetch(`${API_BASE}/api/users`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+        body: JSON.stringify({
+          email: newUserForm.email,
+          name: newUserForm.name,
+          password: newUserForm.password || undefined,
+          role: newUserForm.role,
+          allowed_domains: domainsArr
+        })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setCreatedApiKey(data.api_key);
+        setNewUserForm({ email: '', name: '', password: '', role: 'analyst', domain: '*' });
+        fetchUsers();
+      } else {
+        alert(data.detail || 'Failed to create user');
+      }
+    } catch (err: any) {
+      alert(err.message || 'Error creating user');
+    } finally {
+      setTeamLoading(false);
+    }
+  };
+
+  const handleDeleteUser = async (userId: string) => {
+    if (!confirm('Are you sure you want to delete this user account?')) return;
+    try {
+      const res = await fetch(`${API_BASE}/api/users/${userId}`, {
+        method: 'DELETE',
+        headers: getAuthHeaders()
+      });
+      if (res.ok) {
+        fetchUsers();
+      } else {
+        const data = await res.json();
+        alert(data.detail || 'Could not delete user');
+      }
+    } catch (err: any) {
+      alert(err.message || 'Error deleting user');
+    }
+  };
+
+  const handleCreateDomain = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newDomainForm.id.trim() || !newDomainForm.name.trim()) return;
+    setTeamLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/domains`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+        body: JSON.stringify(newDomainForm)
+      });
+      if (res.ok) {
+        const domainName = newDomainForm.name;
+        setNewDomainForm({ id: '', name: '', description: '' });
+        fetchDomains();
+        alert(`Domain '${domainName}' created successfully!`);
+      } else {
+        const data = await res.json();
+        alert(data.detail || 'Failed to create domain');
+      }
+    } catch (err: any) {
+      alert(err.message || 'Error creating domain');
+    } finally {
+      setTeamLoading(false);
+    }
   };
 
   useEffect(() => {
@@ -796,6 +894,20 @@ export default function App() {
           </div>
 
           <div className="top-bar-right">
+            {currentUser?.role === 'admin' && (
+              <button 
+                className="theme-toggle-btn"
+                onClick={() => {
+                  fetchUsers();
+                  setShowTeamModal(true);
+                }}
+                title="Manage Team Members & Domains"
+              >
+                <Users size={13} color="var(--accent-color)" />
+                <span>Team & Domains</span>
+              </button>
+            )}
+
             {currentUser ? (
               <div className="user-profile-badge">
                 <Shield size={13} color="var(--accent-color)" />
@@ -1186,6 +1298,186 @@ export default function App() {
           </div>
         )}
       </main>
+
+      {/* Team & Domains Management Modal */}
+      {showTeamModal && (
+        <div className="login-modal-overlay">
+          <div className="login-modal-card team-modal-card">
+            <div className="login-modal-header">
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Users size={18} color="var(--accent-color)" />
+                <h3 className="login-modal-title">Team & Domain Management</h3>
+              </div>
+              <button className="login-close-btn" onClick={() => setShowTeamModal(false)}>×</button>
+            </div>
+
+            <p className="login-modal-subtitle">
+              Provision enterprise users, assign role permissions, and partition warehouse domain scopes.
+            </p>
+
+            <div className="login-mode-tabs">
+              <button 
+                type="button"
+                className={`login-mode-tab ${teamTab === 'users' ? 'active' : ''}`}
+                onClick={() => setTeamTab('users')}
+              >
+                Team Members ({userList.length})
+              </button>
+              <button 
+                type="button"
+                className={`login-mode-tab ${teamTab === 'domains' ? 'active' : ''}`}
+                onClick={() => setTeamTab('domains')}
+              >
+                Domains ({domains.length})
+              </button>
+            </div>
+
+            {teamTab === 'users' && (
+              <div className="team-tab-content">
+                {/* Add User Form */}
+                <form onSubmit={handleCreateUser} className="team-create-form">
+                  <div className="team-form-grid">
+                    <input 
+                      type="text"
+                      className="login-input"
+                      placeholder="Full Name"
+                      value={newUserForm.name}
+                      onChange={e => setNewUserForm({ ...newUserForm, name: e.target.value })}
+                      required
+                    />
+                    <input 
+                      type="email"
+                      className="login-input"
+                      placeholder="user@company.com"
+                      value={newUserForm.email}
+                      onChange={e => setNewUserForm({ ...newUserForm, email: e.target.value })}
+                      required
+                    />
+                    <select
+                      className="login-input"
+                      value={newUserForm.role}
+                      onChange={e => setNewUserForm({ ...newUserForm, role: e.target.value })}
+                    >
+                      <option value="analyst">Analyst (Chat + SQL)</option>
+                      <option value="viewer">Viewer (Read-only)</option>
+                      <option value="admin">Admin (Full Control)</option>
+                    </select>
+                    <select
+                      className="login-input"
+                      value={newUserForm.domain}
+                      onChange={e => setNewUserForm({ ...newUserForm, domain: e.target.value })}
+                    >
+                      <option value="*">* (All Domains)</option>
+                      {domains.filter(d => d.id !== 'global').map(d => (
+                        <option key={d.id} value={d.id}>Domain: {d.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <button type="submit" className="login-submit-btn" disabled={teamLoading}>
+                    {teamLoading ? 'Provisioning...' : '+ Add User'}
+                  </button>
+                </form>
+
+                {createdApiKey && (
+                  <div className="created-key-card">
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ fontWeight: 600, color: '#10b981' }}>User Provisioned Successfully!</span>
+                      <button 
+                        className="copy-key-btn"
+                        onClick={() => {
+                          navigator.clipboard.writeText(createdApiKey);
+                          setCopiedKey(true);
+                          setTimeout(() => setCopiedKey(false), 2000);
+                        }}
+                      >
+                        {copiedKey ? <Check size={12} color="#10b981" /> : <Copy size={12} />}
+                        <span>{copiedKey ? 'Copied' : 'Copy API Key'}</span>
+                      </button>
+                    </div>
+                    <code className="api-key-code">{createdApiKey}</code>
+                  </div>
+                )}
+
+                {/* Users List Table */}
+                <div className="team-user-list">
+                  {userList.map(u => (
+                    <div key={u.id} className="team-user-row">
+                      <div className="user-row-info">
+                        <div className="user-row-name">{u.name}</div>
+                        <div className="user-row-email">{u.email}</div>
+                      </div>
+                      <div className="user-row-meta">
+                        <span className={`user-role-tag ${u.role}`}>{u.role.toUpperCase()}</span>
+                        <span className="user-domain-badge">{u.allowed_domains.join(', ')}</span>
+                        {currentUser?.id !== u.id && (
+                          <button 
+                            className="delete-user-btn" 
+                            onClick={() => handleDeleteUser(u.id)}
+                            title="Remove User"
+                          >
+                            <Trash2 size={13} />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {teamTab === 'domains' && (
+              <div className="team-tab-content">
+                {/* Add Domain Form */}
+                <form onSubmit={handleCreateDomain} className="team-create-form">
+                  <div className="team-form-grid">
+                    <input 
+                      type="text"
+                      className="login-input"
+                      placeholder="Domain Slug (e.g. sales)"
+                      value={newDomainForm.id}
+                      onChange={e => setNewDomainForm({ ...newDomainForm, id: e.target.value })}
+                      required
+                    />
+                    <input 
+                      type="text"
+                      className="login-input"
+                      placeholder="Display Name (e.g. Sales & Pipeline)"
+                      value={newDomainForm.name}
+                      onChange={e => setNewDomainForm({ ...newDomainForm, name: e.target.value })}
+                      required
+                    />
+                    <input 
+                      type="text"
+                      className="login-input"
+                      placeholder="Description (Scope & context)"
+                      value={newDomainForm.description}
+                      onChange={e => setNewDomainForm({ ...newDomainForm, description: e.target.value })}
+                    />
+                  </div>
+                  <button type="submit" className="login-submit-btn" disabled={teamLoading}>
+                    {teamLoading ? 'Creating...' : '+ Create Domain'}
+                  </button>
+                </form>
+
+                {/* Domains List */}
+                <div className="team-user-list">
+                  {domains.map(d => (
+                    <div key={d.id} className="team-user-row">
+                      <div className="user-row-info">
+                        <div className="user-row-name">{d.name}</div>
+                        <div className="user-row-email">ID: <code>{d.id}</code></div>
+                      </div>
+                      <div className="user-row-meta">
+                        <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>{d.description}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Enterprise Login Modal */}
       {showLoginModal && (
