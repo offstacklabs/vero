@@ -268,3 +268,36 @@ def test_server_auth_and_rbac():
     # 6. Unauthorized domain chat blocked
     blocked_chat = client.post("/api/chat", json={"question": "show ads", "domain": "marketing"}, headers=viewer_headers)
     assert blocked_chat.status_code == 403
+
+def test_server_user_and_domain_management():
+    client = TestClient(app)
+    # Admin login
+    login_res = client.post("/api/auth/login", json={"email": "admin@verodata.dev", "password": "admin"})
+    admin_headers = {"Authorization": f"Bearer {login_res.json()['token']}"}
+
+    # 1. Create a new domain via API
+    dom_res = client.post("/api/domains", json={"id": "ops", "name": "Operations", "description": "Supply chain & logistics"}, headers=admin_headers)
+    assert dom_res.status_code == 200
+    assert dom_res.json()["domain"]["id"] == "ops"
+
+    # 2. Create a new user via API
+    user_res = client.post("/api/users", json={
+        "email": "ops_lead@company.com",
+        "name": "Ops Lead",
+        "role": "analyst",
+        "allowed_domains": ["ops"]
+    }, headers=admin_headers)
+    assert user_res.status_code == 200
+    created_user = user_res.json()["user"]
+    assert created_user["email"] == "ops_lead@company.com"
+    assert "api_key" in user_res.json()
+    new_user_id = created_user["id"]
+
+    # 3. List users
+    users_list_res = client.get("/api/users", headers=admin_headers)
+    assert users_list_res.status_code == 200
+    assert any(u["id"] == new_user_id for u in users_list_res.json()["users"])
+
+    # 4. Delete user
+    del_res = client.delete(f"/api/users/{new_user_id}", headers=admin_headers)
+    assert del_res.status_code == 200

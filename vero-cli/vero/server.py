@@ -137,6 +137,75 @@ def get_domains(user: User = Depends(get_current_user)):
     accessible = [d for d in all_domains if mgr.can_access_domain(user, d["id"])]
     return {"domains": accessible}
 
+class DomainCreateRequest(BaseModel):
+    id: str
+    name: str
+    description: Optional[str] = ""
+
+@app.post("/api/domains")
+def create_domain(req: DomainCreateRequest, user: User = Depends(require_role(["admin"]))):
+    engine = ContextEngine()
+    created = engine.create_domain(domain_id=req.id, name=req.name, description=req.description or "")
+    return {"success": True, "domain": created}
+
+class UserCreateRequest(BaseModel):
+    email: str
+    name: str
+    password: Optional[str] = None
+    role: str = "analyst"
+    allowed_domains: Optional[List[str]] = None
+
+@app.get("/api/users")
+def list_users(user: User = Depends(require_role(["admin"]))):
+    mgr = AuthManager()
+    users = mgr.get_all_users()
+    return {
+        "users": [
+            {
+                "id": u.id,
+                "email": u.email,
+                "name": u.name,
+                "role": u.role,
+                "allowed_domains": u.allowed_domains,
+                "is_active": u.is_active
+            }
+            for u in users
+        ]
+    }
+
+@app.post("/api/users")
+def create_user(req: UserCreateRequest, user: User = Depends(require_role(["admin"]))):
+    mgr = AuthManager()
+    new_user, raw_api_key = mgr.create_user(
+        email=req.email,
+        name=req.name,
+        password=req.password,
+        role=req.role.lower().strip(),
+        allowed_domains=req.allowed_domains or ["*"]
+    )
+    return {
+        "success": True,
+        "user": {
+            "id": new_user.id,
+            "email": new_user.email,
+            "name": new_user.name,
+            "role": new_user.role,
+            "allowed_domains": new_user.allowed_domains,
+            "is_active": new_user.is_active
+        },
+        "api_key": raw_api_key
+    }
+
+@app.delete("/api/users/{user_id}")
+def delete_user(user_id: str, user: User = Depends(require_role(["admin"]))):
+    mgr = AuthManager()
+    if user_id == user.id:
+        raise HTTPException(status_code=400, detail="Cannot delete your own user account")
+    deleted = mgr.delete_user(user_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="User not found")
+    return {"success": True, "deleted": user_id}
+
 class RulesUpdateRequest(BaseModel):
     rules: str
     domain: Optional[str] = "global"
