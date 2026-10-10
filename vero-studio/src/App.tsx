@@ -21,7 +21,8 @@ import {
   Check,
   Layers,
   MessageSquarePlus,
-  MessageSquare
+  MessageSquare,
+  LayoutDashboard
 } from 'lucide-react';
 import { ChartVisualizer } from './components/ChartVisualizer';
 import { SqlEditor } from './components/SqlEditor';
@@ -31,6 +32,7 @@ import { ReasoningSteps } from './components/ReasoningSteps';
 import { PromptChips } from './components/PromptChips';
 import { SqlCard } from './components/SqlCard';
 import { SchemaTree, type TableEntity } from './components/SchemaTree';
+import { DashboardCanvas, type DashboardTile } from './components/DashboardCanvas';
 
 interface DomainInfo {
   id: string;
@@ -92,7 +94,7 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [schemas, setSchemas] = useState<TableEntity[]>([]);
   const [semanticMetrics, setSemanticMetrics] = useState<SemanticMetric[]>([]);
-  const [activeTab, setActiveTab] = useState<'chat' | 'scratchpad' | 'metrics' | 'rules'>('chat');
+  const [activeTab, setActiveTab] = useState<'chat' | 'scratchpad' | 'dashboard' | 'metrics' | 'rules'>('chat');
   const [selectedSchema, setSelectedSchema] = useState<TableEntity | null>(null);
   const [dialect, setDialect] = useState<string>('BigQuery');
   const [syncing, setSyncing] = useState(false);
@@ -104,6 +106,8 @@ export default function App() {
     { id: 'product', name: 'Product', description: 'Engagement & retention' }
   ]);
   const [selectedDomain, setSelectedDomain] = useState<string>('global');
+  const [tiles, setTiles] = useState<DashboardTile[]>([]);
+  const [refreshingDashboard, setRefreshingDashboard] = useState(false);
   const [rulesText, setRulesText] = useState<string>('');
   const [rulesSaving, setRulesSaving] = useState(false);
   const [rulesSavedToast, setRulesSavedToast] = useState(false);
@@ -240,6 +244,53 @@ export default function App() {
     }
   };
 
+  const fetchTiles = (domain = selectedDomain) => {
+    const url = domain ? `${API_BASE}/api/dashboard/tiles?domain=${domain}` : `${API_BASE}/api/dashboard/tiles`;
+    fetch(url)
+      .then(res => res.json())
+      .then(data => {
+        if (data.tiles) setTiles(data.tiles);
+      })
+      .catch(() => console.error("Could not fetch dashboard tiles"));
+  };
+
+  const handlePinTile = async (tileData: {
+    title: string;
+    tile_type: 'kpi' | 'chart' | 'table';
+    chart_type?: string;
+    sql?: string;
+    data?: any;
+  }) => {
+    try {
+      const res = await fetch(`${API_BASE}/api/dashboard/tiles`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...tileData, domain: selectedDomain })
+      });
+      if (res.ok) {
+        fetchTiles(selectedDomain);
+        alert(`📌 Pinned "${tileData.title}" to Dashboard Canvas!`);
+      }
+    } catch (err) {
+      alert(`Failed to pin tile: ${err}`);
+    }
+  };
+
+  const handleUnpinTile = async (tileId: string) => {
+    try {
+      const res = await fetch(`${API_BASE}/api/dashboard/tiles/${tileId}`, { method: 'DELETE' });
+      if (res.ok) fetchTiles(selectedDomain);
+    } catch (err) {
+      alert(`Failed to unpin tile: ${err}`);
+    }
+  };
+
+  const handleRefreshDashboard = () => {
+    setRefreshingDashboard(true);
+    fetchTiles(selectedDomain);
+    setTimeout(() => setRefreshingDashboard(false), 500);
+  };
+
   const handleSaveRules = async () => {
     setRulesSaving(true);
     try {
@@ -321,6 +372,7 @@ export default function App() {
     fetchMetrics(selectedDomain);
     fetchRules(selectedDomain);
     fetchSessions(selectedDomain);
+    fetchTiles(selectedDomain);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedDomain]);
 
@@ -545,6 +597,13 @@ export default function App() {
             <span>SQL Studio</span>
           </div>
           <div 
+            className={`nav-item ${activeTab === 'dashboard' ? 'active' : ''}`}
+            onClick={() => setActiveTab('dashboard')}
+          >
+            <LayoutDashboard size={15} />
+            <span>Dashboard Canvas</span>
+          </div>
+          <div 
             className={`nav-item ${activeTab === 'metrics' ? 'active' : ''}`}
             onClick={() => setActiveTab('metrics')}
           >
@@ -687,6 +746,13 @@ export default function App() {
                       rowCount={msg.data?.row_count}
                       dialect={dialect}
                       onOpenInEditor={handleOpenInEditor}
+                      onPin={() => handlePinTile({
+                        title: msg.text.slice(0, 36) || 'Query Result',
+                        tile_type: isSingleMetric(msg.data) ? 'kpi' : (msg.suggested_visualization && msg.suggested_visualization !== 'table' ? 'chart' : 'table'),
+                        chart_type: msg.suggested_visualization || 'bar',
+                        sql: msg.sql,
+                        data: msg.data
+                      })}
                     />
                   )}
 
@@ -815,6 +881,18 @@ export default function App() {
             onExecute={handleExecuteSql}
             loading={loading}
             apiBase={API_BASE}
+          />
+        )}
+
+        {/* Dashboard Canvas Tab */}
+        {activeTab === 'dashboard' && (
+          <DashboardCanvas
+            tiles={tiles}
+            selectedDomain={selectedDomain}
+            onUnpinTile={handleUnpinTile}
+            onOpenInStudio={handleOpenInEditor}
+            onRefresh={handleRefreshDashboard}
+            refreshing={refreshingDashboard}
           />
         )}
 

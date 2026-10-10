@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Copy, Check, ExternalLink, Database, Clock, Layers } from 'lucide-react';
+import { Copy, Check, ExternalLink, Database, Clock, Layers, Pin } from 'lucide-react';
 
 interface SqlCardProps {
   sql: string;
@@ -7,6 +7,7 @@ interface SqlCardProps {
   rowCount?: number;
   dialect?: string;
   onOpenInEditor?: (sql: string) => void;
+  onPin?: () => void;
 }
 
 export const SqlCard: React.FC<SqlCardProps> = ({
@@ -14,7 +15,8 @@ export const SqlCard: React.FC<SqlCardProps> = ({
   durationMs,
   rowCount,
   dialect = 'Postgres',
-  onOpenInEditor
+  onOpenInEditor,
+  onPin
 }) => {
   const [copied, setCopied] = useState(false);
 
@@ -47,6 +49,12 @@ export const SqlCard: React.FC<SqlCardProps> = ({
         </div>
 
         <div className="sql-card-actions">
+          {onPin && (
+            <button className="sql-action-btn" onClick={onPin} title="Pin to Dashboard">
+              <Pin size={12} />
+              <span>Pin</span>
+            </button>
+          )}
           <button className="sql-action-btn" onClick={handleCopy} title="Copy SQL">
             {copied ? <Check size={12} color="#3fb950" /> : <Copy size={12} />}
             <span>{copied ? 'Copied' : 'Copy'}</span>
