@@ -278,7 +278,14 @@ class DatabaseManager:
         if not self.is_safe_query(cleaned_query):
             raise ValueError("Query rejected: Only pure SELECT statements are allowed in read-only mode, or query has syntax errors.")
 
-        # Pre-execution Cost Guard
+        # 1. Semantic Cache Interception ($0 cost, 0ms latency)
+        from vero.cache import SemanticCacheEngine
+        cache = SemanticCacheEngine()
+        cached_result = cache.get_cached_result(cleaned_query, self.dialect)
+        if cached_result:
+            return cached_result
+
+        # 2. Pre-execution Cost Guard
         estimate = None
         if enforce_cost_guard and self.dialect == "bigquery":
             estimate = self.estimate_query_cost(cleaned_query)
@@ -288,6 +295,7 @@ class DatabaseManager:
                     f"exceeding safety limit of {format_bytes(estimate['max_allowed_bytes'])}. Query cancelled."
                 )
 
+        # 3. Warehouse Execution
         t_start = time.time()
         if self.dialect == "duckdb":
             con = self.get_engine()
@@ -308,7 +316,7 @@ class DatabaseManager:
 
         dur_ms = round((time.time() - t_start) * 1000, 1)
 
-        # Apply Enterprise Data Governance & PII Masking
+        # 4. Apply Enterprise Data Governance & PII Masking
         masked_columns = []
         if mask_pii and rows:
             try:
@@ -328,7 +336,7 @@ class DatabaseManager:
         b_scanned = estimate.get("bytes_scanned", 0) if estimate else 0
         cost_usd = estimate.get("cost_usd") if (estimate and estimate.get("cost_usd", 0) > 0) else calculate_warehouse_cost(self.dialect, bytes_scanned=b_scanned, duration_ms=dur_ms)
 
-        return {
+        final_result = {
             "columns": columns,
             "rows": rows,
             "row_count": len(rows),
@@ -339,3 +347,14 @@ class DatabaseManager:
             "cost_guard_passed": estimate.get("cost_guard_passed", True) if estimate else True,
             "masked_columns": masked_columns
         }
+
+        # 5. Populate Semantic Cache
+        cache.set_cached_result(
+            sql=cleaned_query,
+            dialect=self.dialect,
+            result=final_result,
+            bytes_scanned=b_scanned,
+            cost_usd=cost_usd
+        )
+
+        return final_result

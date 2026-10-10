@@ -55,6 +55,11 @@ class AuthConfig(BaseModel):
     mode: str = Field(default="local", description="Auth mode: 'local' (zero-friction OSS) or 'oidc' (enterprise Okta/OneLogin SSO)")
     oidc: OIDCConfig = Field(default_factory=OIDCConfig)
 
+class CacheConfig(BaseModel):
+    enabled: bool = Field(default=True, description="Enable local semantic result caching to save warehouse costs")
+    ttl_seconds: int = Field(default=3600, description="Time to live for cached results in seconds (default 1 hour)")
+    max_size_mb: int = Field(default=500, description="Maximum cache storage size in megabytes")
+
 class VeroConfig(BaseModel):
     version: str = "1.0"
     database: DatabaseConfig = Field(default_factory=DatabaseConfig)
@@ -63,6 +68,7 @@ class VeroConfig(BaseModel):
     cost_guard: CostGuardConfig = Field(default_factory=CostGuardConfig)
     governance: GovernanceConfig = Field(default_factory=GovernanceConfig)
     auth: AuthConfig = Field(default_factory=AuthConfig)
+    cache: CacheConfig = Field(default_factory=CacheConfig)
     context_dir: str = ".vero"
 
     @classmethod
