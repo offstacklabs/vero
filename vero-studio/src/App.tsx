@@ -3,7 +3,7 @@ import './App.css';
 import { 
   Terminal, 
   Send, 
-  Sparkles,
+  Database,
   Bot,
   User,
   TerminalSquare,
@@ -970,13 +970,9 @@ export default function App() {
                 ))}
               </select>
             </div>
-            <div className="status-pill">
-              <span className="status-dot"></span>
-              <span>Agent: Connected</span>
-            </div>
-            <div className="status-pill">
-              <Sparkles size={14} color="var(--accent-color)" />
-              <span>Warehouse: {dialect}</span>
+            <div className="warehouse-badge" title={`Connected to ${dialect} Data Warehouse`}>
+              <Database size={12} color="var(--accent-color)" />
+              <span>{dialect}</span>
             </div>
           </div>
 
