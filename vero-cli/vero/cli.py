@@ -61,6 +61,22 @@ def doctor():
     except Exception as e:
         console.print(f"[bold red]✗ Database Connection Failed:[/bold red] {str(e)}")
 
+    try:
+        with console.status("Checking metadata storage and migrations..."):
+            engine = ContextEngine()
+            mig_res = engine.migrate()
+            console.print(f"[bold green]✓ {mig_res['message']}[/bold green]")
+    except Exception as e:
+        console.print(f"[bold red]✗ Metadata Storage Error:[/bold red] {str(e)}")
+
+@app.command("migrate")
+def cli_migrate():
+    """Applies schema migrations to centralized metadata database."""
+    console.print(Panel.fit("[bold cyan]Running Metadata Database Migrations[/bold cyan]", border_style="cyan"))
+    engine = ContextEngine()
+    res = engine.migrate()
+    console.print(f"[bold green]✓ {res['message']}[/bold green]")
+
 @app.command()
 def run(query: str):
     """Executes a raw SQL query directly against the connected warehouse."""

@@ -163,6 +163,12 @@ class ContextEngine:
     def unpin_tile(self, tile_id: str) -> bool:
         return self.storage.unpin_tile(tile_id=tile_id)
 
+    def migrate(self) -> Dict[str, Any]:
+        """Runs database schema migrations."""
+        if hasattr(self.storage, "migrate"):
+            return self.storage.migrate()
+        return {"status": "ok", "backend": "local", "message": "Local file storage requires no database migrations."}
+
     def sync_schemas(self, schema_info: Dict[str, Any], domain: str = "global") -> None:
         """Converts introspected database schema into readable Markdown and saves to storage."""
         # Clean old schemas in storage for this domain

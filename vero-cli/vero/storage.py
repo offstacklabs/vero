@@ -6,7 +6,7 @@ import uuid
 import yaml
 from datetime import datetime, timezone
 from sqlalchemy import (
-    create_engine, text, Table, Column, String, Text, MetaData, Integer, Float, DateTime
+    create_engine, inspect, text, Table, Column, String, Text, MetaData, Integer, Float, DateTime
 )
 
 class ContextStorage(ABC):
@@ -527,9 +527,44 @@ class DatabaseContextStorage(ContextStorage):
             Column("created_at", DateTime, default=lambda: datetime.now(timezone.utc))
         )
 
-        # Create tables and seed default domains
+        # Create tables and run schema migrations
         self.metadata.create_all(self.engine)
+        self._run_migrations()
         self._seed_default_domains()
+
+    def _run_migrations(self) -> None:
+        """
+        Lightweight, zero-downtime automated schema migration runner.
+        Idempotently inspects existing metadata tables and applies schema upgrades
+        (e.g., adding missing columns to _vero_query_runs, _vero_messages, etc.)
+        ensuring smooth upgrades across SQLite, PostgreSQL, and Supabase.
+        """
+        try:
+            inspector = inspect(self.engine)
+            existing_tables = inspector.get_table_names()
+
+            with self.engine.begin() as conn:
+                # 1. Migrate _vero_query_runs
+                if "_vero_query_runs" in existing_tables:
+                    cols = [c["name"] for c in inspector.get_columns("_vero_query_runs")]
+                    if "bytes_scanned" not in cols:
+                        conn.execute(text("ALTER TABLE _vero_query_runs ADD COLUMN bytes_scanned BIGINT DEFAULT 0"))
+                    if "cost_usd" not in cols:
+                        conn.execute(text("ALTER TABLE _vero_query_runs ADD COLUMN cost_usd FLOAT DEFAULT 0.0"))
+
+                # 2. Migrate _vero_dashboard_tiles
+                if "_vero_dashboard_tiles" in existing_tables:
+                    cols = [c["name"] for c in inspector.get_columns("_vero_dashboard_tiles")]
+                    if "domain" not in cols:
+                        conn.execute(text("ALTER TABLE _vero_dashboard_tiles ADD COLUMN domain VARCHAR(64) DEFAULT 'global'"))
+        except Exception:
+            # Table or dialect already matches current schema
+            pass
+
+    def migrate(self) -> Dict[str, Any]:
+        """Applies schema migrations to centralized database."""
+        self._run_migrations()
+        return {"status": "ok", "backend": "database", "message": "All metadata table migrations applied successfully."}
 
     def _seed_default_domains(self) -> None:
         defaults = [

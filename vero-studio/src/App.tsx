@@ -927,7 +927,7 @@ export default function App() {
 
         {/* Observability & Cost Intelligence Tab */}
         {activeTab === 'observability' && (
-          <div className="main-chat-container">
+          <div className="observability-page-wrapper">
             <ObservabilityDashboard 
               apiBase={API_BASE}
               onOpenQueryInEditor={(sql) => {
