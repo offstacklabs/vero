@@ -70,6 +70,7 @@ interface Message {
   bytes_formatted?: string;
   cost_usd?: number;
   cost_guard_passed?: boolean;
+  telemetry?: any;
   data?: {
     columns: string[];
     rows: any[][];
@@ -488,6 +489,7 @@ export default function App() {
                     bytes_formatted: data.bytes_formatted,
                     cost_usd: data.cost_usd,
                     cost_guard_passed: data.cost_guard_passed,
+                    telemetry: data.telemetry,
                     data: data.data,
                     suggested_visualization: data.suggested_visualization,
                     error: data.error,
@@ -746,6 +748,7 @@ export default function App() {
                       reflectionSteps={msg.reflection_steps}
                       bytesFormatted={msg.bytes_formatted}
                       costUsd={msg.cost_usd}
+                      telemetry={msg.telemetry}
                     />
                   )}
 
@@ -759,6 +762,7 @@ export default function App() {
                       bytesFormatted={msg.bytes_formatted}
                       costUsd={msg.cost_usd}
                       costGuardPassed={msg.cost_guard_passed}
+                      totalTokens={msg.telemetry?.total_tokens}
                       onOpenInEditor={handleOpenInEditor}
                       onPin={() => handlePinTile({
                         title: msg.text.slice(0, 36) || 'Query Result',

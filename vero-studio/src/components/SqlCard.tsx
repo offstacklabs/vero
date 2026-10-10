@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Copy, Check, ExternalLink, Database, Clock, Layers, Pin, Zap } from 'lucide-react';
+import { Copy, Check, ExternalLink, Database, Clock, Layers, Pin, Zap, Coins } from 'lucide-react';
 
 interface SqlCardProps {
   sql: string;
@@ -9,6 +9,7 @@ interface SqlCardProps {
   bytesFormatted?: string;
   costUsd?: number;
   costGuardPassed?: boolean;
+  totalTokens?: number;
   onOpenInEditor?: (sql: string) => void;
   onPin?: () => void;
 }
@@ -21,6 +22,7 @@ export const SqlCard: React.FC<SqlCardProps> = ({
   bytesFormatted,
   costUsd,
   costGuardPassed,
+  totalTokens,
   onOpenInEditor,
   onPin
 }) => {
@@ -40,6 +42,12 @@ export const SqlCard: React.FC<SqlCardProps> = ({
             <Database size={11} />
             <span>{dialect}</span>
           </span>
+          {totalTokens !== undefined && totalTokens > 0 && (
+            <span className="sql-stat-tag" title="LLM Tokens consumed">
+              <Coins size={11} />
+              <span>{totalTokens.toLocaleString()} tok</span>
+            </span>
+          )}
           {bytesFormatted && bytesFormatted !== '0 B' && (
             <span className="sql-stat-tag" title="Projected Warehouse Scan & Cost">
               <Zap size={11} color={costGuardPassed === false ? '#f85149' : 'var(--accent-color)'} />
