@@ -230,8 +230,14 @@ class DatabaseManager:
                 "cost_guard_passed": False
             }
 
-    def execute_query(self, query: str, limit: int = 100, enforce_cost_guard: bool = False) -> Dict[str, Any]:
-        """Safely executes a read-only query and returns headers, rows, and cost metrics."""
+    def execute_query(
+        self,
+        query: str,
+        limit: int = 100,
+        enforce_cost_guard: bool = False,
+        mask_pii: bool = True
+    ) -> Dict[str, Any]:
+        """Safely executes a read-only query and returns headers, rows, cost metrics, and governance info."""
         cleaned_query = query.strip().rstrip(";")
         
         if not self.is_safe_query(cleaned_query):
@@ -251,16 +257,8 @@ class DatabaseManager:
             con = self.get_engine()
             res = con.execute(cleaned_query)
             columns = [desc[0] for desc in res.description]
-            rows = res.fetchmany(limit)
-            return {
-                "columns": columns,
-                "rows": [list(row) for row in rows],
-                "row_count": len(rows),
-                "bytes_scanned": 0,
-                "bytes_formatted": "0 B (Local DuckDB)",
-                "cost_usd": 0.0,
-                "cost_guard_passed": True
-            }
+            raw_rows = res.fetchmany(limit)
+            rows = [list(row) for row in raw_rows]
         else:
             engine = self.get_engine()
             with engine.connect() as conn:
@@ -269,13 +267,33 @@ class DatabaseManager:
                 
                 result = conn.execute(text(cleaned_query))
                 columns = list(result.keys())
-                rows = result.fetchmany(limit)
-                return {
-                    "columns": columns,
-                    "rows": [list(row) for row in rows],
-                    "row_count": len(rows),
-                    "bytes_scanned": estimate.get("bytes_scanned", 0) if estimate else 0,
-                    "bytes_formatted": estimate.get("bytes_formatted", "0 B") if estimate else "0 B",
-                    "cost_usd": estimate.get("cost_usd", 0.0) if estimate else 0.0,
-                    "cost_guard_passed": estimate.get("cost_guard_passed", True) if estimate else True
-                }
+                raw_rows = result.fetchmany(limit)
+                rows = [list(row) for row in raw_rows]
+
+        # Apply Enterprise Data Governance & PII Masking
+        masked_columns = []
+        if mask_pii and rows:
+            try:
+                from vero.config import VeroConfig
+                from vero.governance import DataGovernanceEngine
+                gov_cfg = VeroConfig.load().governance
+                if gov_cfg and gov_cfg.enabled:
+                    gov = DataGovernanceEngine(
+                        enabled=gov_cfg.enabled,
+                        auto_detect_pii=gov_cfg.auto_detect_pii,
+                        custom_rules=gov_cfg.rules
+                    )
+                    rows, masked_columns = gov.mask_dataset(columns, rows)
+            except Exception:
+                pass
+
+        return {
+            "columns": columns,
+            "rows": rows,
+            "row_count": len(rows),
+            "bytes_scanned": estimate.get("bytes_scanned", 0) if estimate else 0,
+            "bytes_formatted": estimate.get("bytes_formatted", "0 B") if estimate else "0 B",
+            "cost_usd": estimate.get("cost_usd", 0.0) if estimate else 0.0,
+            "cost_guard_passed": estimate.get("cost_guard_passed", True) if estimate else True,
+            "masked_columns": masked_columns
+        }

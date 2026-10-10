@@ -74,6 +74,7 @@ interface Message {
     columns: string[];
     rows: any[][];
     row_count: number;
+    masked_columns?: string[];
   };
   suggested_visualization?: string;
   error?: string;
@@ -785,6 +786,7 @@ export default function App() {
                       columns={msg.data.columns} 
                       rows={msg.data.rows} 
                       tableName="vero_analytics_result"
+                      maskedColumns={msg.data.masked_columns}
                     />
                   )}
 

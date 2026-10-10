@@ -1,6 +1,6 @@
 import os
 from pathlib import Path
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 from pydantic import BaseModel, Field
 import yaml
 from dotenv import load_dotenv
@@ -25,12 +25,18 @@ class CostGuardConfig(BaseModel):
     max_bytes_scanned: int = Field(default=10 * 1024 * 1024 * 1024, description="Maximum bytes allowed per query before blocking (default: 10 GB)")
     cost_per_tb_usd: float = Field(default=6.25, description="Cost in USD per Terabyte scanned (default: $6.25 for BigQuery on-demand)")
 
+class GovernanceConfig(BaseModel):
+    enabled: bool = Field(default=True, description="Enable column-level data governance and PII masking")
+    auto_detect_pii: bool = Field(default=True, description="Automatically mask emails, phones, SSNs, credit cards, and passwords")
+    rules: List[Dict[str, str]] = Field(default_factory=list, description="Custom masking rules: [{'column': 'salary', 'strategy': 'REDACT'}]")
+
 class VeroConfig(BaseModel):
     version: str = "1.0"
     database: DatabaseConfig = Field(default_factory=DatabaseConfig)
     llm: LLMConfig = Field(default_factory=LLMConfig)
     storage: StorageConfig = Field(default_factory=StorageConfig)
     cost_guard: CostGuardConfig = Field(default_factory=CostGuardConfig)
+    governance: GovernanceConfig = Field(default_factory=GovernanceConfig)
     context_dir: str = ".vero"
 
     @classmethod

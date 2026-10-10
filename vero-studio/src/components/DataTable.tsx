@@ -1,13 +1,14 @@
 import React, { useState, useMemo } from 'react';
-import { Download, Search, ArrowUpDown } from 'lucide-react';
+import { Download, Search, ArrowUpDown, ShieldCheck } from 'lucide-react';
 
 interface DataTableProps {
   columns: string[];
   rows: any[][];
   tableName?: string;
+  maskedColumns?: string[];
 }
 
-export const DataTable: React.FC<DataTableProps> = ({ columns, rows, tableName = 'query_results' }) => {
+export const DataTable: React.FC<DataTableProps> = ({ columns, rows, tableName = 'query_results', maskedColumns = [] }) => {
   const [filter, setFilter] = useState('');
   const [sortCol, setSortCol] = useState<number | null>(null);
   const [sortAsc, setSortAsc] = useState(true);
@@ -78,6 +79,16 @@ export const DataTable: React.FC<DataTableProps> = ({ columns, rows, tableName =
           />
         </div>
         <div className="datatable-actions">
+          {maskedColumns && maskedColumns.length > 0 && (
+            <span 
+              className="row-count-badge" 
+              style={{ color: '#10b981', display: 'inline-flex', alignItems: 'center', gap: '4px', backgroundColor: 'rgba(16, 185, 129, 0.08)', padding: '2px 8px', borderRadius: '4px', border: '1px solid rgba(16, 185, 129, 0.2)' }}
+              title={`PII Masked: ${maskedColumns.join(', ')}`}
+            >
+              <ShieldCheck size={12} />
+              <span>{maskedColumns.length} PII Masked</span>
+            </span>
+          )}
           <span className="row-count-badge">
             {filteredRows.length} of {rows.length} rows
           </span>
