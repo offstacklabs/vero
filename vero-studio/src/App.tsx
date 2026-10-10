@@ -23,7 +23,10 @@ import {
   MessageSquarePlus,
   MessageSquare,
   LayoutDashboard,
-  Activity
+  Activity,
+  Lock,
+  LogOut,
+  Shield
 } from 'lucide-react';
 import { ChartVisualizer } from './components/ChartVisualizer';
 import { SqlEditor } from './components/SqlEditor';
@@ -35,6 +38,14 @@ import { SqlCard } from './components/SqlCard';
 import { SchemaTree, type TableEntity } from './components/SchemaTree';
 import { DashboardCanvas, type DashboardTile } from './components/DashboardCanvas';
 import { ObservabilityDashboard } from './components/ObservabilityDashboard';
+
+interface UserProfile {
+  id: string;
+  email: string;
+  name: string;
+  role: 'admin' | 'analyst' | 'viewer';
+  allowed_domains: string[];
+}
 
 interface DomainInfo {
   id: string;
@@ -125,9 +136,75 @@ export default function App() {
   const [teachRuleInput, setTeachRuleInput] = useState<string>('');
   const [sessions, setSessions] = useState<SessionInfo[]>([]);
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
+  const [token, setToken] = useState<string | null>(() => localStorage.getItem('vero_auth_token'));
+  const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
+  const [showLoginModal, setShowLoginModal] = useState<boolean>(false);
+  const [loginForm, setLoginForm] = useState({ email: '', password: '', apiKey: '', mode: 'password' as 'password' | 'api_key' });
+  const [loginError, setLoginError] = useState<string | null>(null);
+  const [loginLoading, setLoginLoading] = useState<boolean>(false);
   const [theme, setTheme] = useState<'light' | 'dark'>(() => {
     return (localStorage.getItem('vero_theme') as 'light' | 'dark') || 'light';
   });
+
+  const getAuthHeaders = (): Record<string, string> => {
+    return token ? { 'Authorization': `Bearer ${token}` } : {};
+  };
+
+  useEffect(() => {
+    fetch(`${API_BASE}/api/auth/me`, {
+      headers: getAuthHeaders()
+    })
+      .then(res => {
+        if (res.ok) return res.json();
+        throw new Error('Not authenticated');
+      })
+      .then(data => {
+        if (data.user) setCurrentUser(data.user);
+      })
+      .catch(() => {
+        if (token) {
+          localStorage.removeItem('vero_auth_token');
+          setToken(null);
+        }
+      });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token]);
+
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoginLoading(true);
+    setLoginError(null);
+    try {
+      const payload = loginForm.mode === 'api_key'
+        ? { api_key: loginForm.apiKey }
+        : { email: loginForm.email, password: loginForm.password };
+
+      const res = await fetch(`${API_BASE}/api/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || 'Login failed');
+
+      localStorage.setItem('vero_auth_token', data.token);
+      setToken(data.token);
+      setCurrentUser(data.user);
+      setShowLoginModal(false);
+      fetchDomains();
+    } catch (err: any) {
+      setLoginError(err.message || String(err));
+    } finally {
+      setLoginLoading(false);
+    }
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem('vero_auth_token');
+    setToken(null);
+    setCurrentUser(null);
+    fetchDomains();
+  };
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
@@ -135,7 +212,7 @@ export default function App() {
   }, [theme]);
 
   const fetchConfig = () => {
-    fetch(`${API_BASE}/api/config`)
+    fetch(`${API_BASE}/api/config`, { headers: getAuthHeaders() })
       .then(res => res.json())
       .then(data => {
         if (data.database && data.database.dialect) {
@@ -151,7 +228,7 @@ export default function App() {
   };
 
   const fetchDomains = () => {
-    fetch(`${API_BASE}/api/domains`)
+    fetch(`${API_BASE}/api/domains`, { headers: getAuthHeaders() })
       .then(res => res.json())
       .then(data => {
         if (data.domains && data.domains.length > 0) setDomains(data.domains);
@@ -161,7 +238,7 @@ export default function App() {
 
   const fetchSchemas = (domain = selectedDomain) => {
     const url = domain ? `${API_BASE}/api/schemas?domain=${domain}` : `${API_BASE}/api/schemas`;
-    fetch(url)
+    fetch(url, { headers: getAuthHeaders() })
       .then(res => res.json())
       .then(data => {
         if (data.schemas) {
@@ -179,7 +256,7 @@ export default function App() {
 
   const fetchMetrics = (domain = selectedDomain) => {
     const url = domain ? `${API_BASE}/api/metrics?domain=${domain}` : `${API_BASE}/api/metrics`;
-    fetch(url)
+    fetch(url, { headers: getAuthHeaders() })
       .then(res => res.json())
       .then(data => {
         if (data.metrics) {
@@ -191,7 +268,7 @@ export default function App() {
 
   const fetchRules = (domain = selectedDomain) => {
     const url = domain ? `${API_BASE}/api/rules?domain=${domain}` : `${API_BASE}/api/rules`;
-    fetch(url)
+    fetch(url, { headers: getAuthHeaders() })
       .then(res => res.json())
       .then(data => {
         if (data.rules !== undefined) setRulesText(data.rules);
@@ -201,7 +278,7 @@ export default function App() {
 
   const fetchSessions = (domain = selectedDomain) => {
     const url = domain ? `${API_BASE}/api/sessions?domain=${domain}` : `${API_BASE}/api/sessions`;
-    fetch(url)
+    fetch(url, { headers: getAuthHeaders() })
       .then(res => res.json())
       .then(data => {
         if (data.sessions) setSessions(data.sessions);
@@ -211,7 +288,7 @@ export default function App() {
 
   const handleSelectSession = (sessionId: string) => {
     setCurrentSessionId(sessionId);
-    fetch(`${API_BASE}/api/sessions/${sessionId}/messages`)
+    fetch(`${API_BASE}/api/sessions/${sessionId}/messages`, { headers: getAuthHeaders() })
       .then(res => res.json())
       .then(data => {
         if (data.messages && data.messages.length > 0) {
@@ -373,6 +450,7 @@ export default function App() {
   useEffect(() => {
     fetchDomains();
     fetchConfig();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -718,6 +796,30 @@ export default function App() {
           </div>
 
           <div className="top-bar-right">
+            {currentUser ? (
+              <div className="user-profile-badge">
+                <Shield size={13} color="var(--accent-color)" />
+                <span className="user-profile-name">{currentUser.name}</span>
+                <span className={`user-role-tag ${currentUser.role}`}>{currentUser.role.toUpperCase()}</span>
+                <button 
+                  className="user-logout-btn" 
+                  onClick={handleLogout}
+                  title="Sign Out"
+                >
+                  <LogOut size={12} />
+                </button>
+              </div>
+            ) : (
+              <button 
+                className="theme-toggle-btn"
+                onClick={() => setShowLoginModal(true)}
+                title="Sign in with Email or API Key"
+              >
+                <Lock size={13} />
+                <span>Sign In</span>
+              </button>
+            )}
+
             <button 
               className="theme-toggle-btn"
               onClick={() => setTheme(prev => prev === 'light' ? 'dark' : 'light')}
@@ -910,6 +1012,7 @@ export default function App() {
             onExecute={handleExecuteSql}
             loading={loading}
             apiBase={API_BASE}
+            canExecute={currentUser ? currentUser.role !== 'viewer' : true}
           />
         )}
 
@@ -1083,6 +1186,95 @@ export default function App() {
           </div>
         )}
       </main>
+
+      {/* Enterprise Login Modal */}
+      {showLoginModal && (
+        <div className="login-modal-overlay">
+          <div className="login-modal-card">
+            <div className="login-modal-header">
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Lock size={18} color="var(--accent-color)" />
+                <h3 className="login-modal-title">Sign in to Vero</h3>
+              </div>
+              <button className="login-close-btn" onClick={() => setShowLoginModal(false)}>×</button>
+            </div>
+
+            <p className="login-modal-subtitle">
+              Access your assigned business domains, SQL Studio, and semantic models.
+            </p>
+
+            <div className="login-mode-tabs">
+              <button 
+                type="button"
+                className={`login-mode-tab ${loginForm.mode === 'password' ? 'active' : ''}`}
+                onClick={() => setLoginForm({ ...loginForm, mode: 'password' })}
+              >
+                Password
+              </button>
+              <button 
+                type="button"
+                className={`login-mode-tab ${loginForm.mode === 'api_key' ? 'active' : ''}`}
+                onClick={() => setLoginForm({ ...loginForm, mode: 'api_key' })}
+              >
+                API Key
+              </button>
+            </div>
+
+            <form onSubmit={handleLogin} className="login-form">
+              {loginForm.mode === 'password' ? (
+                <>
+                  <div className="login-input-group">
+                    <label className="login-label">Email Address</label>
+                    <input 
+                      type="email" 
+                      className="login-input"
+                      placeholder="admin@vero.local"
+                      value={loginForm.email}
+                      onChange={e => setLoginForm({ ...loginForm, email: e.target.value })}
+                      required
+                    />
+                  </div>
+                  <div className="login-input-group">
+                    <label className="login-label">Password</label>
+                    <input 
+                      type="password" 
+                      className="login-input"
+                      placeholder="••••••••"
+                      value={loginForm.password}
+                      onChange={e => setLoginForm({ ...loginForm, password: e.target.value })}
+                      required
+                    />
+                  </div>
+                </>
+              ) : (
+                <div className="login-input-group">
+                  <label className="login-label">API Key</label>
+                  <input 
+                    type="password" 
+                    className="login-input"
+                    placeholder="vero_..."
+                    value={loginForm.apiKey}
+                    onChange={e => setLoginForm({ ...loginForm, apiKey: e.target.value })}
+                    required
+                  />
+                </div>
+              )}
+
+              {loginError && (
+                <div className="login-error-msg">{loginError}</div>
+              )}
+
+              <button type="submit" className="login-submit-btn" disabled={loginLoading}>
+                {loginLoading ? 'Authenticating...' : 'Sign In'}
+              </button>
+
+              <div className="login-hint">
+                Default credentials: <code>admin@vero.local</code> / <code>admin</code>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

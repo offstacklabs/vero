@@ -19,6 +19,7 @@ interface SqlEditorProps {
   onExecute: (sql: string) => Promise<{ data: any; duration_ms?: number } | void>;
   loading: boolean;
   apiBase?: string;
+  canExecute?: boolean;
 }
 
 export const SqlEditor: React.FC<SqlEditorProps> = ({
@@ -26,7 +27,8 @@ export const SqlEditor: React.FC<SqlEditorProps> = ({
   dialect = 'BigQuery',
   onExecute,
   loading,
-  apiBase = ''
+  apiBase = '',
+  canExecute = true
 }) => {
   const [sql, setSql] = useState(initialSql);
   const [prevInitialSql, setPrevInitialSql] = useState(initialSql);
@@ -114,11 +116,12 @@ export const SqlEditor: React.FC<SqlEditorProps> = ({
           <button 
             className="editor-run-btn"
             onClick={handleRun}
-            disabled={loading || !sql.trim()}
+            disabled={loading || !sql.trim() || canExecute === false}
+            title={canExecute === false ? "Ad-hoc SQL execution restricted to Analysts and Admins" : "Execute SQL (⌘↵)"}
           >
-            <Play size={13} fill={loading ? 'none' : 'currentColor'} />
-            <span>{loading ? 'Running...' : 'Run'}</span>
-            <kbd className="cmd-kbd">⌘↵</kbd>
+            <Play size={13} fill={loading || canExecute === false ? 'none' : 'currentColor'} />
+            <span>{loading ? 'Running...' : canExecute === false ? 'Read-only' : 'Run'}</span>
+            {canExecute !== false && <kbd className="cmd-kbd">⌘↵</kbd>}
           </button>
 
           <button className="editor-tool-btn" onClick={handleCopy} title="Copy SQL">
