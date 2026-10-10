@@ -270,39 +270,50 @@ def test_server_auth_and_rbac():
     assert blocked_chat.status_code == 403
 
 def test_server_user_and_domain_management():
+    from unittest.mock import patch
+    from vero.config import VeroConfig
     client = TestClient(app)
     # Admin login
     login_res = client.post("/api/auth/login", json={"email": "admin@verodata.dev", "password": "admin"})
     admin_headers = {"Authorization": f"Bearer {login_res.json()['token']}"}
 
-    # 1. Create a new domain via API
-    dom_res = client.post("/api/domains", json={"id": "ops", "name": "Operations", "description": "Supply chain & logistics"}, headers=admin_headers)
-    assert dom_res.status_code == 200
-    assert dom_res.json()["domain"]["id"] == "ops"
+    # 1. Without enterprise tier, creating domain fails with 402 Payment Required
+    blocked_dom = client.post("/api/domains", json={"id": "ops", "name": "Operations"}, headers=admin_headers)
+    assert blocked_dom.status_code == 402
 
-    # 2. Create a new user via API
-    user_res = client.post("/api/users", json={
-        "email": "ops_lead@company.com",
-        "name": "Ops Lead",
-        "role": "analyst",
-        "allowed_domains": ["ops"]
-    }, headers=admin_headers)
-    assert user_res.status_code == 200
-    created_user = user_res.json()["user"]
-    assert created_user["email"] == "ops_lead@company.com"
-    assert "api_key" in user_res.json()
-    new_user_id = created_user["id"]
+    # 2. With enterprise tier enabled, creation succeeds
+    cfg = VeroConfig.load()
+    cfg.license.tier = "enterprise"
+    with patch("vero.config.VeroConfig.load", return_value=cfg):
+        dom_res = client.post("/api/domains", json={"id": "ops", "name": "Operations", "description": "Supply chain & logistics"}, headers=admin_headers)
+        assert dom_res.status_code == 200
+        assert dom_res.json()["domain"]["id"] == "ops"
 
-    # 3. List users
-    users_list_res = client.get("/api/users", headers=admin_headers)
-    assert users_list_res.status_code == 200
-    assert any(u["id"] == new_user_id for u in users_list_res.json()["users"])
+        # 3. Create a new user via API
+        user_res = client.post("/api/users", json={
+            "email": "ops_lead@company.com",
+            "name": "Ops Lead",
+            "role": "analyst",
+            "allowed_domains": ["ops"]
+        }, headers=admin_headers)
+        assert user_res.status_code == 200
+        created_user = user_res.json()["user"]
+        assert created_user["email"] == "ops_lead@company.com"
+        assert "api_key" in user_res.json()
+        new_user_id = created_user["id"]
 
-    # 4. Delete user
-    del_res = client.delete(f"/api/users/{new_user_id}", headers=admin_headers)
-    assert del_res.status_code == 200
+        # 4. List users
+        users_list_res = client.get("/api/users", headers=admin_headers)
+        assert users_list_res.status_code == 200
+        assert any(u["id"] == new_user_id for u in users_list_res.json()["users"])
+
+        # 5. Delete user
+        del_res = client.delete(f"/api/users/{new_user_id}", headers=admin_headers)
+        assert del_res.status_code == 200
 
 def test_server_oidc_and_auth_config():
+    from unittest.mock import patch
+    from vero.config import VeroConfig
     client = TestClient(app)
     # 1. Check auth config endpoint
     cfg_res = client.get("/api/auth/config")
@@ -311,14 +322,25 @@ def test_server_oidc_and_auth_config():
     assert "mode" in cfg
     assert "provider_name" in cfg
 
-    # 2. Test OIDC login callback (Okta / OneLogin)
-    oidc_res = client.post("/api/auth/oidc/login", json={
+    # 2. Test OIDC login blocked without enterprise license
+    blocked_oidc = client.post("/api/auth/oidc/login", json={
         "email": "sarah@enterprise.com",
         "name": "Sarah Enterprise",
         "groups": ["Finance-Team"]
     })
-    assert oidc_res.status_code == 200
-    data = oidc_res.json()
-    assert "token" in data
-    assert data["user"]["role"] == "analyst"
-    assert "finance" in data["user"]["allowed_domains"]
+    assert blocked_oidc.status_code == 402
+
+    # 3. Test OIDC login allowed with enterprise license
+    cfg_obj = VeroConfig.load()
+    cfg_obj.license.tier = "enterprise"
+    with patch("vero.config.VeroConfig.load", return_value=cfg_obj):
+        oidc_res = client.post("/api/auth/oidc/login", json={
+            "email": "sarah@enterprise.com",
+            "name": "Sarah Enterprise",
+            "groups": ["Finance-Team"]
+        })
+        assert oidc_res.status_code == 200
+        data = oidc_res.json()
+        assert "token" in data
+        assert data["user"]["role"] == "analyst"
+        assert "finance" in data["user"]["allowed_domains"]

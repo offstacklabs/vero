@@ -8,6 +8,10 @@ from dotenv import load_dotenv
 # Load .env file globally if present
 load_dotenv()
 
+class LicenseConfig(BaseModel):
+    tier: str = Field(default="oss", description="License tier: 'oss' or 'enterprise'")
+    key: Optional[str] = Field(default=None, description="Enterprise license key")
+
 class DatabaseConfig(BaseModel):
     dialect: str = Field(default="bigquery", description="Database dialect (bigquery, snowflake, postgres, duckdb)")
     connection_string: str = Field(default="bigquery://my-project-id/my_analytics_dataset", description="SQLAlchemy connection string")
@@ -62,6 +66,7 @@ class CacheConfig(BaseModel):
 
 class VeroConfig(BaseModel):
     version: str = "1.0"
+    license: LicenseConfig = Field(default_factory=LicenseConfig)
     database: DatabaseConfig = Field(default_factory=DatabaseConfig)
     llm: LLMConfig = Field(default_factory=LLMConfig)
     storage: StorageConfig = Field(default_factory=StorageConfig)
@@ -70,6 +75,15 @@ class VeroConfig(BaseModel):
     auth: AuthConfig = Field(default_factory=AuthConfig)
     cache: CacheConfig = Field(default_factory=CacheConfig)
     context_dir: str = ".vero"
+
+    def is_enterprise(self) -> bool:
+        """Returns True if the license tier is set to 'enterprise'."""
+        return self.license and self.license.tier.lower() == "enterprise"
+
+    def check_enterprise_feature(self, feature_name: str) -> None:
+        """Raises a ValueError if an enterprise feature is accessed on the OSS tier."""
+        if not self.is_enterprise():
+            raise ValueError(f"Feature '{feature_name}' requires an Enterprise license. Current tier: OSS.")
 
     @classmethod
     def get_workspace_root(cls) -> Path:

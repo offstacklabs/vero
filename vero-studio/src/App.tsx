@@ -164,6 +164,7 @@ export default function App() {
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
   const [diagnosticLoadingId, setDiagnosticLoadingId] = useState<string | null>(null);
   const [token, setToken] = useState<string | null>(() => localStorage.getItem('vero_auth_token'));
+  const [licenseTier, setLicenseTier] = useState<'oss' | 'enterprise'>('oss');
 
   const handleRunDiagnostics = async (msgId: string, sql: string) => {
     setDiagnosticLoadingId(msgId);
@@ -225,6 +226,7 @@ export default function App() {
       })
       .then(data => {
         if (data.user) setCurrentUser(data.user);
+        if (data.license && data.license.tier) setLicenseTier(data.license.tier);
       })
       .catch(() => {
         if (token) {
@@ -255,6 +257,7 @@ export default function App() {
       localStorage.setItem('vero_auth_token', data.token);
       setToken(data.token);
       setCurrentUser(data.user);
+      if (data.license && data.license.tier) setLicenseTier(data.license.tier);
       setShowLoginModal(false);
       fetchDomains();
       addToast(`Signed in as ${data.user.name}`, 'success');
@@ -1078,16 +1081,20 @@ export default function App() {
             <button 
               className="theme-toggle-btn"
               onClick={() => {
+                if (licenseTier === 'oss') {
+                  addToast('Multi-tenant domain partitioning requires Vero Enterprise', 'warning');
+                  return;
+                }
                 setTeamTab('domains');
                 setShowTeamModal(true);
               }}
-              title="Manage business domain namespaces"
+              title="Manage business domain namespaces (Enterprise Feature)"
             >
-              <Layers size={13} color="var(--accent-color)" />
+              {licenseTier === 'oss' ? <Lock size={13} color="#f59e0b" /> : <Layers size={13} color="var(--accent-color)" />}
               <span>Domains</span>
             </button>
 
-            {currentUser?.role === 'admin' && authConfig?.mode === 'oidc' && (
+            {currentUser?.role === 'admin' && (
               <button 
                 className="theme-toggle-btn"
                 onClick={() => {
@@ -1206,10 +1213,16 @@ export default function App() {
                       {!msg.diagnostics && diagnosticLoadingId !== msg.id && (
                         <button 
                           className="editor-tool-btn"
-                          onClick={() => handleRunDiagnostics(msg.id, msg.sql!)}
-                          title="Run automated RCA to find the statistical drivers of this metric"
+                          onClick={() => {
+                            if (licenseTier === 'oss') {
+                              addToast('Automated Root Cause Analysis requires Vero Enterprise', 'warning');
+                              return;
+                            }
+                            handleRunDiagnostics(msg.id, msg.sql!);
+                          }}
+                          title="Run automated RCA to find the statistical drivers of this metric (Enterprise Feature)"
                         >
-                          <Sparkles size={13} color="var(--accent-color)" />
+                          {licenseTier === 'oss' ? <Lock size={13} color="#f59e0b" /> : <Sparkles size={13} color="var(--accent-color)" />}
                           <span>Explain Why (Run Diagnostics)</span>
                         </button>
                       )}

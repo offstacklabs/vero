@@ -99,6 +99,12 @@ def oidc_login(req: OIDCLoginRequest):
     Authenticates a user from an enterprise IdP (Okta, OneLogin, Azure AD)
     and dynamically maps their corporate groups to Vero roles and allowed domains.
     """
+    config = VeroConfig.load()
+    try:
+        config.check_enterprise_feature("SSO (OIDC / Okta / Azure AD)")
+    except ValueError as e:
+        raise HTTPException(status_code=402, detail=str(e))
+
     mgr = AuthManager()
     user, _ = mgr.map_idp_groups_to_user(
         email=req.email,
@@ -114,6 +120,9 @@ def oidc_login(req: OIDCLoginRequest):
             "name": user.name,
             "role": user.role,
             "allowed_domains": user.allowed_domains
+        },
+        "license": {
+            "tier": config.license.tier if config.license else "oss"
         }
     }
 
@@ -135,6 +144,7 @@ def login(req: LoginRequest):
     if not user or not user.is_active:
         raise HTTPException(status_code=401, detail="Invalid credentials or inactive user account")
 
+    config = VeroConfig.load()
     token = create_access_token(user)
     return {
         "token": token,
@@ -144,11 +154,15 @@ def login(req: LoginRequest):
             "name": user.name,
             "role": user.role,
             "allowed_domains": user.allowed_domains
+        },
+        "license": {
+            "tier": config.license.tier if config.license else "oss"
         }
     }
 
 @app.get("/api/auth/me")
 def get_me(user: User = Depends(get_current_user)):
+    config = VeroConfig.load()
     return {
         "user": {
             "id": user.id,
@@ -156,6 +170,9 @@ def get_me(user: User = Depends(get_current_user)):
             "name": user.name,
             "role": user.role,
             "allowed_domains": user.allowed_domains
+        },
+        "license": {
+            "tier": config.license.tier if config.license else "oss"
         }
     }
 
@@ -192,6 +209,12 @@ class DomainCreateRequest(BaseModel):
 
 @app.post("/api/domains")
 def create_domain(req: DomainCreateRequest, user: User = Depends(require_role(["admin"]))):
+    config = VeroConfig.load()
+    try:
+        config.check_enterprise_feature("Multi-Tenant Domain Partitioning")
+    except ValueError as e:
+        raise HTTPException(status_code=402, detail=str(e))
+
     engine = ContextEngine()
     created = engine.create_domain(domain_id=req.id, name=req.name, description=req.description or "")
     return {"success": True, "domain": created}
@@ -399,6 +422,11 @@ def preview_table(table_name: str):
 def explain_anomaly(req: QueryRequest, user: User = Depends(require_role(["admin", "analyst"]))):
     """Performs automated root cause analysis on a base SQL query."""
     config = VeroConfig.load()
+    try:
+        config.check_enterprise_feature("Automated Root Cause Analysis (RCA)")
+    except ValueError as e:
+        raise HTTPException(status_code=402, detail=str(e))
+
     db = DatabaseManager(dialect=config.database.dialect, connection_string=config.database.connection_string)
     from vero.diagnostics import DiagnosticEngine
     diagnostics = DiagnosticEngine(db)
