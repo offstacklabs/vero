@@ -29,25 +29,31 @@ def get_current_user(
 ) -> User:
     """
     Validates Bearer JWT token or X-API-Key against centralized database.
-    If no auth header is supplied, falls back to seeded default admin in single-user mode.
+    In local OSS mode (default), seamlessly returns the local developer user with zero friction.
+    In enterprise OIDC mode, requires valid credentials.
     """
+    config = VeroConfig.load()
     mgr = AuthManager()
+
     token = None
     if authorization and authorization.startswith("Bearer "):
         token = authorization[7:].strip()
     elif x_api_key:
         token = x_api_key.strip()
 
-    if not token:
-        # Fallback to seeded default admin if no token provided
-        user, _ = mgr.seed_default_admin()
-        return user
-
-    user = mgr.authenticate(token)
-    if not user or not user.is_active:
+    # If valid token provided, authenticate regardless of mode
+    if token:
+        user = mgr.authenticate(token)
+        if user and user.is_active:
+            return user
         raise HTTPException(status_code=401, detail="Invalid or expired authentication credentials")
 
-    return user
+    # In local OSS mode (default), auto-authenticate as local developer
+    if not config.auth or config.auth.mode == "local":
+        return mgr.get_local_developer_user()
+
+    # In enterprise OIDC mode without credentials, reject with 401
+    raise HTTPException(status_code=401, detail="Authentication required: Enterprise SSO or API Key needed")
 
 def require_role(allowed_roles: List[str]):
     def role_checker(user: User = Depends(get_current_user)) -> User:
@@ -68,6 +74,48 @@ def check_domain_auth(domain: Optional[str], user: User):
             status_code=403,
             detail=f"Access forbidden: User '{user.email}' is not authorized to access domain '{domain}'"
         )
+
+@app.get("/api/auth/config")
+def get_auth_config():
+    """Returns the current authentication mode and IdP provider configuration."""
+    config = VeroConfig.load()
+    auth_cfg = config.auth if config.auth else None
+    oidc_cfg = auth_cfg.oidc if auth_cfg else None
+    return {
+        "mode": auth_cfg.mode if auth_cfg else "local",
+        "provider_name": oidc_cfg.provider_name if oidc_cfg else "Okta",
+        "issuer_url": oidc_cfg.issuer_url if oidc_cfg else "",
+        "client_id": oidc_cfg.client_id if oidc_cfg else ""
+    }
+
+class OIDCLoginRequest(BaseModel):
+    email: str
+    name: str
+    groups: List[str] = []
+
+@app.post("/api/auth/oidc/login")
+def oidc_login(req: OIDCLoginRequest):
+    """
+    Authenticates a user from an enterprise IdP (Okta, OneLogin, Azure AD)
+    and dynamically maps their corporate groups to Vero roles and allowed domains.
+    """
+    mgr = AuthManager()
+    user, _ = mgr.map_idp_groups_to_user(
+        email=req.email,
+        name=req.name,
+        groups=req.groups
+    )
+    token = create_access_token(user)
+    return {
+        "token": token,
+        "user": {
+            "id": user.id,
+            "email": user.email,
+            "name": user.name,
+            "role": user.role,
+            "allowed_domains": user.allowed_domains
+        }
+    }
 
 class LoginRequest(BaseModel):
     email: Optional[str] = None

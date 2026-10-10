@@ -301,6 +301,49 @@ class AuthManager:
             )
             return res.rowcount > 0
 
+    def get_local_developer_user(self) -> User:
+        """Zero-friction OSS local developer user with full administrative access."""
+        return User(
+            id="usr_local_dev",
+            email="developer@verodata.dev",
+            name="Local Engineer",
+            role="admin",
+            allowed_domains=["*"],
+            is_active=True
+        )
+
+    def map_idp_groups_to_user(self, email: str, name: str, groups: List[str]) -> Tuple[User, str]:
+        """
+        Maps corporate IdP groups (Okta, OneLogin, Azure AD) to Vero role and domains.
+        Elevates role and merges allowed domains based on configured group mappings.
+        """
+        cfg = VeroConfig.load()
+        mapping = cfg.auth.oidc.group_mapping if cfg.auth and cfg.auth.oidc else {}
+
+        resolved_role = "viewer"
+        role_priority = {"admin": 3, "analyst": 2, "viewer": 1}
+        allowed_domains = set()
+
+        for g in groups:
+            if g in mapping:
+                m = mapping[g]
+                r = m.get("role", "viewer")
+                if role_priority.get(r, 1) > role_priority.get(resolved_role, 1):
+                    resolved_role = r
+                for d in m.get("domains", []):
+                    allowed_domains.add(d)
+
+        if not allowed_domains:
+            allowed_domains = {"global"}
+
+        domains_list = ["*"] if "*" in allowed_domains else list(allowed_domains)
+        return self.create_user(
+            email=email,
+            name=name,
+            role=resolved_role,
+            allowed_domains=domains_list
+        )
+
     def can_access_domain(self, user: User, domain: str) -> bool:
         """Enforces domain-level authorization partitioning."""
         if not domain or domain == "global":

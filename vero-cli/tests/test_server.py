@@ -301,3 +301,24 @@ def test_server_user_and_domain_management():
     # 4. Delete user
     del_res = client.delete(f"/api/users/{new_user_id}", headers=admin_headers)
     assert del_res.status_code == 200
+
+def test_server_oidc_and_auth_config():
+    client = TestClient(app)
+    # 1. Check auth config endpoint
+    cfg_res = client.get("/api/auth/config")
+    assert cfg_res.status_code == 200
+    cfg = cfg_res.json()
+    assert "mode" in cfg
+    assert "provider_name" in cfg
+
+    # 2. Test OIDC login callback (Okta / OneLogin)
+    oidc_res = client.post("/api/auth/oidc/login", json={
+        "email": "sarah@enterprise.com",
+        "name": "Sarah Enterprise",
+        "groups": ["Finance-Team"]
+    })
+    assert oidc_res.status_code == 200
+    data = oidc_res.json()
+    assert "token" in data
+    assert data["user"]["role"] == "analyst"
+    assert "finance" in data["user"]["allowed_domains"]

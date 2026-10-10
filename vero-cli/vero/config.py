@@ -37,6 +37,24 @@ class GovernanceConfig(BaseModel):
     auto_detect_pii: bool = Field(default=True, description="Automatically mask emails, phones, SSNs, credit cards, and passwords")
     rules: List[Dict[str, str]] = Field(default_factory=list, description="Custom masking rules: [{'column': 'salary', 'strategy': 'REDACT'}]")
 
+class OIDCConfig(BaseModel):
+    provider_name: str = Field(default="Okta", description="Display name of enterprise identity provider (Okta, OneLogin, Azure AD, Google)")
+    issuer_url: str = Field(default="", description="OIDC issuer URL (e.g. https://company.okta.com)")
+    client_id: str = Field(default="", description="OIDC client ID")
+    group_mapping: Dict[str, Dict[str, Any]] = Field(
+        default_factory=lambda: {
+            "Data-Admins": {"role": "admin", "domains": ["*"]},
+            "Finance-Team": {"role": "analyst", "domains": ["finance"]},
+            "Marketing-Team": {"role": "analyst", "domains": ["marketing"]},
+            "All-Employees": {"role": "viewer", "domains": ["global"]}
+        },
+        description="Maps corporate groups to Vero roles and domains"
+    )
+
+class AuthConfig(BaseModel):
+    mode: str = Field(default="local", description="Auth mode: 'local' (zero-friction OSS) or 'oidc' (enterprise Okta/OneLogin SSO)")
+    oidc: OIDCConfig = Field(default_factory=OIDCConfig)
+
 class VeroConfig(BaseModel):
     version: str = "1.0"
     database: DatabaseConfig = Field(default_factory=DatabaseConfig)
@@ -44,6 +62,7 @@ class VeroConfig(BaseModel):
     storage: StorageConfig = Field(default_factory=StorageConfig)
     cost_guard: CostGuardConfig = Field(default_factory=CostGuardConfig)
     governance: GovernanceConfig = Field(default_factory=GovernanceConfig)
+    auth: AuthConfig = Field(default_factory=AuthConfig)
     context_dir: str = ".vero"
 
     @classmethod
