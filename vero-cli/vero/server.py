@@ -395,6 +395,22 @@ def preview_table(table_name: str):
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
+@app.post("/api/diagnostics/explain")
+def explain_anomaly(req: QueryRequest, user: User = Depends(require_role(["admin", "analyst"]))):
+    """Performs automated root cause analysis on a base SQL query."""
+    config = VeroConfig.load()
+    db = DatabaseManager(dialect=config.database.dialect, connection_string=config.database.connection_string)
+    from vero.diagnostics import DiagnosticEngine
+    diagnostics = DiagnosticEngine(db)
+    
+    try:
+        res = diagnostics.explain_anomaly(req.sql)
+        if not res["success"]:
+            raise HTTPException(status_code=400, detail=res.get("error", "Diagnostic failed"))
+        return res
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
 from fastapi.responses import StreamingResponse
 
 @app.post("/api/chat")
