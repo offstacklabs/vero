@@ -352,6 +352,39 @@ def domains_add(
     created = engine.create_domain(domain_id=domain_id, name=name, description=description)
     console.print(f"[bold green]✓ Created business domain:[/bold green] [cyan]{created['id']}[/cyan] ({created['name']})")
 
+@metrics_app.command("sync")
+def metrics_sync(
+    source: str = typer.Option(..., "--from", help="Source framework: lookml, dbt, or cube"),
+    path: str = typer.Option(..., "--path", "-p", help="Path to manifest.json, .lkml folder, or schema file"),
+    domain: str = typer.Option("global", "--domain", "-d", help="Domain namespace to import into")
+):
+    """Imports and synchronizes external semantic metrics into Vero."""
+    from vero.semantic import SemanticImporter
+    from pathlib import Path
+    
+    target = Path(path)
+    if not target.exists():
+        console.print(f"[bold red]✗ Path not found:[/bold red] {path}")
+        raise typer.Exit(1)
+
+    importer = SemanticImporter()
+    try:
+        if source.lower() == "lookml":
+            metrics = importer.import_lookml(target, domain=domain)
+        elif source.lower() == "dbt":
+            metrics = importer.import_dbt(target, domain=domain)
+        elif source.lower() == "cube":
+            metrics = importer.import_cube(target, domain=domain)
+        else:
+            console.print(f"[bold red]✗ Unsupported source:[/bold red] {source}. Use lookml, dbt, or cube.")
+            raise typer.Exit(1)
+
+        count = importer.sync_to_vero(metrics, domain=domain)
+        console.print(f"[bold green]✓ Successfully imported {count} semantic metrics from {source.upper()} to domain '{domain}'.[/bold green]")
+    except Exception as e:
+        console.print(f"[bold red]✗ Import Failed:[/bold red] {str(e)}")
+        raise typer.Exit(1)
+
 users_app = typer.Typer(
     name="users",
     help="Manage enterprise users, roles, and domain-scoped access.",
