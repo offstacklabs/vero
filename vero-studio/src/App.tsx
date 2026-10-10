@@ -22,7 +22,8 @@ import {
   Layers,
   MessageSquarePlus,
   MessageSquare,
-  LayoutDashboard
+  LayoutDashboard,
+  Activity
 } from 'lucide-react';
 import { ChartVisualizer } from './components/ChartVisualizer';
 import { SqlEditor } from './components/SqlEditor';
@@ -33,6 +34,7 @@ import { PromptChips } from './components/PromptChips';
 import { SqlCard } from './components/SqlCard';
 import { SchemaTree, type TableEntity } from './components/SchemaTree';
 import { DashboardCanvas, type DashboardTile } from './components/DashboardCanvas';
+import { ObservabilityDashboard } from './components/ObservabilityDashboard';
 
 interface DomainInfo {
   id: string;
@@ -100,7 +102,7 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [schemas, setSchemas] = useState<TableEntity[]>([]);
   const [semanticMetrics, setSemanticMetrics] = useState<SemanticMetric[]>([]);
-  const [activeTab, setActiveTab] = useState<'chat' | 'scratchpad' | 'dashboard' | 'metrics' | 'rules'>('chat');
+  const [activeTab, setActiveTab] = useState<'chat' | 'scratchpad' | 'dashboard' | 'observability' | 'metrics' | 'rules'>('chat');
   const [selectedSchema, setSelectedSchema] = useState<TableEntity | null>(null);
   const [dialect, setDialect] = useState<string>('BigQuery');
   const [syncing, setSyncing] = useState(false);
@@ -615,6 +617,14 @@ export default function App() {
             <span>Dashboard Canvas</span>
           </div>
           <div 
+            className={`nav-item ${activeTab === 'observability' ? 'active' : ''}`}
+            onClick={() => setActiveTab('observability')}
+            title="Observability & Cost Intelligence"
+          >
+            <Activity size={15} />
+            <span>Observability</span>
+          </div>
+          <div 
             className={`nav-item ${activeTab === 'metrics' ? 'active' : ''}`}
             onClick={() => setActiveTab('metrics')}
           >
@@ -913,6 +923,19 @@ export default function App() {
             onRefresh={handleRefreshDashboard}
             refreshing={refreshingDashboard}
           />
+        )}
+
+        {/* Observability & Cost Intelligence Tab */}
+        {activeTab === 'observability' && (
+          <div className="main-chat-container">
+            <ObservabilityDashboard 
+              apiBase={API_BASE}
+              onOpenQueryInEditor={(sql) => {
+                setEditorSql(sql);
+                setActiveTab('scratchpad');
+              }}
+            />
+          </div>
         )}
 
         {/* Semantic Layer Manager Tab */}
