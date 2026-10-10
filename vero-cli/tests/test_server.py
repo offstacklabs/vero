@@ -211,3 +211,19 @@ def test_server_estimate_query():
         assert data["valid"] is True
         assert data["bytes_formatted"] == "100.0 MB"
         assert data["cost_guard_passed"] is True
+
+def test_server_observability_stats():
+    client = TestClient(app)
+    res = client.get("/api/observability/stats")
+    assert res.status_code == 200
+    data = res.json()
+    assert "total_queries" in data
+    assert "total_tokens" in data
+    assert "total_spend_usd" in data
+    assert "llm_spend_usd" in data
+    assert "warehouse_spend_usd" in data
+    assert "cost_guard_savings_usd" in data
+    assert "avg_latency_ms" in data
+    assert "active_dialect" in data
+    assert "top_expensive_queries" in data
+    assert "daily_breakdown" in data

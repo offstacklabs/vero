@@ -69,3 +69,15 @@ def test_bigquery_cost_guard_blocked():
         # When executed with enforce_cost_guard=True, should raise ValueError
         with pytest.raises(ValueError, match="Cost Guard Blocked"):
             db.execute_query("SELECT * FROM large_table", enforce_cost_guard=True)
+
+def test_calculate_warehouse_cost():
+    from vero.db import calculate_warehouse_cost
+    # 1 TB BigQuery = $6.25
+    assert calculate_warehouse_cost("bigquery", bytes_scanned=1024**4) == 6.25
+    # Snowflake X-Small (1 credit/hr @ $3.00/credit) for 3600s = $3.00
+    assert calculate_warehouse_cost("snowflake", duration_ms=3600000) == 3.00
+    # Postgres @ $0.10/hr for 3600s = $0.10
+    assert calculate_warehouse_cost("postgres", duration_ms=3600000) == 0.10
+    # DuckDB / SQLite = $0.00
+    assert calculate_warehouse_cost("duckdb", bytes_scanned=1000000, duration_ms=500) == 0.0
+    assert calculate_warehouse_cost("sqlite", bytes_scanned=1000000, duration_ms=500) == 0.0

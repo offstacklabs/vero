@@ -20,10 +20,17 @@ class StorageConfig(BaseModel):
     backend: str = Field(default="local", description="Context storage backend: 'local' or 'database'")
     connection_string: Optional[str] = Field(default=None, description="SQLAlchemy connection string for centralized metadata DB (PostgreSQL, Supabase, etc.)")
 
+class CostRatesConfig(BaseModel):
+    bigquery_per_tb_usd: float = Field(default=6.25, description="Cost in USD per TB scanned for BigQuery on-demand")
+    snowflake_credit_usd: float = Field(default=3.00, description="Cost in USD per Snowflake credit")
+    snowflake_warehouse_size: str = Field(default="X-Small", description="Snowflake warehouse size: X-Small (1 credit/hr), Small (2), Medium (4), Large (8)")
+    postgres_hourly_usd: float = Field(default=0.10, description="Estimated hourly compute cost in USD for Postgres/RDS instance")
+
 class CostGuardConfig(BaseModel):
     enabled: bool = Field(default=True, description="Enforce pre-execution dry-run cost estimation and byte limit checks")
     max_bytes_scanned: int = Field(default=10 * 1024 * 1024 * 1024, description="Maximum bytes allowed per query before blocking (default: 10 GB)")
     cost_per_tb_usd: float = Field(default=6.25, description="Cost in USD per Terabyte scanned (default: $6.25 for BigQuery on-demand)")
+    rates: CostRatesConfig = Field(default_factory=CostRatesConfig)
 
 class GovernanceConfig(BaseModel):
     enabled: bool = Field(default=True, description="Enable column-level data governance and PII masking")

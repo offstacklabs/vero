@@ -1,3 +1,4 @@
+import time
 from typing import Dict, Any, List, Optional
 from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.engine import Engine
@@ -15,6 +16,40 @@ def format_bytes(bytes_num: int) -> str:
         val /= 1024.0
         i += 1
     return f"{val:.1f} {units[i]}" if i > 0 else f"{int(val)} B"
+
+
+def calculate_warehouse_cost(dialect: str, bytes_scanned: int = 0, duration_ms: float = 0.0) -> float:
+    """Calculates query execution cost in USD based on warehouse dialect and configured rates."""
+    from vero.config import VeroConfig
+    cfg = VeroConfig.load()
+    rates = cfg.cost_guard.rates if cfg.cost_guard else None
+
+    d = dialect.lower()
+    if d == "bigquery":
+        rate = rates.bigquery_per_tb_usd if rates else 6.25
+        return round((bytes_scanned / (1024 ** 4)) * rate, 5)
+    elif d == "snowflake":
+        credit_usd = rates.snowflake_credit_usd if rates else 3.00
+        size_credits = {
+            "x-small": 1,
+            "small": 2,
+            "medium": 4,
+            "large": 8,
+            "x-large": 16
+        }
+        wh_size = (rates.snowflake_warehouse_size if rates else "X-Small").lower()
+        credits_per_hr = size_credits.get(wh_size, 1)
+        dur_sec = max(duration_ms / 1000.0, 1.0)
+        cost = (dur_sec / 3600.0) * credits_per_hr * credit_usd
+        return round(cost, 5)
+    elif d in ["postgres", "postgresql"]:
+        hourly_rate = rates.postgres_hourly_usd if rates else 0.10
+        dur_sec = max(duration_ms / 1000.0, 0.1)
+        cost = (dur_sec / 3600.0) * hourly_rate
+        return round(cost, 5)
+    else:
+        # DuckDB, SQLite, in-memory engines have zero incremental cloud compute cost
+        return 0.0
 
 
 class DatabaseManager:
@@ -253,6 +288,7 @@ class DatabaseManager:
                     f"exceeding safety limit of {format_bytes(estimate['max_allowed_bytes'])}. Query cancelled."
                 )
 
+        t_start = time.time()
         if self.dialect == "duckdb":
             con = self.get_engine()
             res = con.execute(cleaned_query)
@@ -269,6 +305,8 @@ class DatabaseManager:
                 columns = list(result.keys())
                 raw_rows = result.fetchmany(limit)
                 rows = [list(row) for row in raw_rows]
+
+        dur_ms = round((time.time() - t_start) * 1000, 1)
 
         # Apply Enterprise Data Governance & PII Masking
         masked_columns = []
@@ -287,13 +325,17 @@ class DatabaseManager:
             except Exception:
                 pass
 
+        b_scanned = estimate.get("bytes_scanned", 0) if estimate else 0
+        cost_usd = estimate.get("cost_usd") if (estimate and estimate.get("cost_usd", 0) > 0) else calculate_warehouse_cost(self.dialect, bytes_scanned=b_scanned, duration_ms=dur_ms)
+
         return {
             "columns": columns,
             "rows": rows,
             "row_count": len(rows),
-            "bytes_scanned": estimate.get("bytes_scanned", 0) if estimate else 0,
+            "duration_ms": dur_ms,
+            "bytes_scanned": b_scanned,
             "bytes_formatted": estimate.get("bytes_formatted", "0 B") if estimate else "0 B",
-            "cost_usd": estimate.get("cost_usd", 0.0) if estimate else 0.0,
+            "cost_usd": cost_usd,
             "cost_guard_passed": estimate.get("cost_guard_passed", True) if estimate else True,
             "masked_columns": masked_columns
         }

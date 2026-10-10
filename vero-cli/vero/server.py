@@ -273,6 +273,92 @@ def run_query(req: QueryRequest):
         engine.record_query_run(sql=req.sql, duration_ms=duration_ms, row_count=0, error=str(e))
         raise HTTPException(status_code=400, detail=str(e))
 
+@app.get("/api/observability/stats")
+def get_observability_stats():
+    """Aggregates end-to-end token consumption, LLM spend, warehouse compute costs, and Cost Guard metrics."""
+    config = VeroConfig.load()
+    engine = ContextEngine()
+    runs = engine.get_query_runs(limit=500)
+    sessions = engine.get_sessions()
+
+    total_prompt_tokens = 0
+    total_completion_tokens = 0
+    total_llm_spend = 0.0
+
+    daily_costs: Dict[str, Dict[str, float]] = {}
+
+    for s in sessions:
+        msgs = engine.get_session_messages(s["id"])
+        for m in msgs:
+            tel = m.get("telemetry") or {}
+            p_tok = tel.get("prompt_tokens", 0)
+            c_tok = tel.get("completion_tokens", 0)
+            llm_cost = tel.get("llm_cost_usd", 0.0)
+            total_prompt_tokens += p_tok
+            total_completion_tokens += c_tok
+            total_llm_spend += llm_cost
+
+            # Group daily
+            date_str = str(m.get("created_at") or "")[:10]
+            if date_str and len(date_str) == 10:
+                if date_str not in daily_costs:
+                    daily_costs[date_str] = {"llm_cost": 0.0, "warehouse_cost": 0.0, "query_count": 0}
+                daily_costs[date_str]["llm_cost"] += llm_cost
+
+    total_queries = len(runs)
+    total_warehouse_spend = 0.0
+    cost_guard_savings = 0.0
+    total_latency_ms = 0.0
+
+    for r in runs:
+        w_cost = r.get("cost_usd", 0.0) or 0.0
+        total_warehouse_spend += w_cost
+        total_latency_ms += (r.get("duration_ms", 0.0) or 0.0)
+
+        # Check for Cost Guard blocked runs
+        err = r.get("error", "") or ""
+        if "cost guard blocked" in err.lower():
+            # Estimate savings from prevented runaway scan
+            b_scanned = r.get("bytes_scanned", 0) or (15 * 1024 * 1024 * 1024)
+            cost_guard_savings += round((b_scanned / (1024 ** 4)) * (config.cost_guard.rates.bigquery_per_tb_usd if config.cost_guard else 6.25), 4)
+
+        date_str = str(r.get("executed_at") or "")[:10]
+        if date_str and len(date_str) == 10:
+            if date_str not in daily_costs:
+                daily_costs[date_str] = {"llm_cost": 0.0, "warehouse_cost": 0.0, "query_count": 0}
+            daily_costs[date_str]["warehouse_cost"] += w_cost
+            daily_costs[date_str]["query_count"] += 1
+
+    avg_latency = round(total_latency_ms / max(total_queries, 1), 1)
+    top_queries = sorted(runs, key=lambda x: (x.get("cost_usd", 0.0) or 0.0, x.get("duration_ms", 0.0) or 0.0), reverse=True)[:5]
+
+    daily_breakdown = [
+        {
+            "date": d,
+            "llm_cost": round(v["llm_cost"], 4),
+            "warehouse_cost": round(v["warehouse_cost"], 4),
+            "total_cost": round(v["llm_cost"] + v["warehouse_cost"], 4),
+            "query_count": int(v["query_count"])
+        }
+        for d, v in sorted(daily_costs.items())
+    ]
+
+    return {
+        "total_queries": total_queries,
+        "total_tokens": total_prompt_tokens + total_completion_tokens,
+        "prompt_tokens": total_prompt_tokens,
+        "completion_tokens": total_completion_tokens,
+        "llm_spend_usd": round(total_llm_spend, 4),
+        "warehouse_spend_usd": round(total_warehouse_spend, 4),
+        "total_spend_usd": round(total_llm_spend + total_warehouse_spend, 4),
+        "cost_guard_savings_usd": round(cost_guard_savings, 4),
+        "avg_latency_ms": avg_latency,
+        "active_dialect": config.database.dialect,
+        "rates": config.cost_guard.rates.model_dump() if config.cost_guard else {},
+        "top_expensive_queries": top_queries,
+        "daily_breakdown": daily_breakdown
+    }
+
 # Mount prebuilt Studio UI assets if present
 static_dir = Path(__file__).parent / "static"
 if static_dir.exists():
