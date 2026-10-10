@@ -1,4 +1,5 @@
 import pytest
+from unittest.mock import patch, MagicMock
 from fastapi.testclient import TestClient
 from vero.server import app
 from vero.storage import DatabaseContextStorage
@@ -121,3 +122,47 @@ def test_server_domains_endpoints():
     assert fin_metrics_res.status_code == 200
     fin_metric_names = [m["name"] for m in fin_metrics_res.json()["metrics"]]
     assert "roas" not in fin_metric_names
+
+def test_server_sessions_and_query_history():
+    client = TestClient(app)
+
+    # 1. Create a session
+    sess_res = client.post("/api/sessions", json={"title": "Q3 Revenue Deep Dive", "domain": "finance"})
+    assert sess_res.status_code == 200
+    sess_id = sess_res.json()["id"]
+
+    # 2. List sessions
+    list_res = client.get("/api/sessions?domain=finance")
+    assert list_res.status_code == 200
+    assert any(s["id"] == sess_id for s in list_res.json()["sessions"])
+
+    # 3. Save message and retrieve
+    save_msg_res = client.post(f"/api/sessions/{sess_id}/messages", json={
+        "sender": "assistant",
+        "text": "Revenue increased by 14% this quarter.",
+        "sql": "SELECT SUM(amount) FROM revenue"
+    })
+    assert save_msg_res.status_code == 200
+
+    msgs_res = client.get(f"/api/sessions/{sess_id}/messages")
+    assert msgs_res.status_code == 200
+    assert len(msgs_res.json()["messages"]) == 1
+    assert msgs_res.json()["messages"][0]["text"] == "Revenue increased by 14% this quarter."
+
+    # 4. Query history logging
+    with patch("vero.server.DatabaseManager") as mock_db_cls:
+        mock_db = MagicMock()
+        mock_db.execute_query.return_value = {"columns": ["num"], "rows": [[1]], "row_count": 1}
+        mock_db_cls.return_value = mock_db
+
+        q_res = client.post("/api/query", json={"sql": "SELECT 1 AS num"})
+        assert q_res.status_code == 200
+
+    hist_res = client.get("/api/history/queries")
+    assert hist_res.status_code == 200
+    assert len(hist_res.json()["runs"]) >= 1
+    assert "SELECT 1 AS num" in hist_res.json()["runs"][0]["sql"]
+
+    # 5. Delete session
+    del_res = client.delete(f"/api/sessions/{sess_id}")
+    assert del_res.status_code == 200

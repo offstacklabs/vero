@@ -1,5 +1,7 @@
 from pathlib import Path
 import json
+import time
+import re
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -167,18 +169,61 @@ def chat_stream(req: ChatRequest):
             yield f"data: {json.dumps(event)}\n\n"
     return StreamingResponse(event_stream(), media_type="text/event-stream")
 
+class SessionCreateRequest(BaseModel):
+    title: str
+    domain: Optional[str] = "global"
+
+@app.get("/api/sessions")
+def list_sessions(domain: Optional[str] = None):
+    engine = ContextEngine()
+    return {"sessions": engine.get_sessions(domain=domain)}
+
+@app.post("/api/sessions")
+def create_session(req: SessionCreateRequest):
+    engine = ContextEngine()
+    return engine.create_session(title=req.title, domain=req.domain or "global")
+
+@app.get("/api/sessions/{session_id}/messages")
+def get_session_messages(session_id: str):
+    engine = ContextEngine()
+    return {"messages": engine.get_session_messages(session_id=session_id)}
+
+@app.post("/api/sessions/{session_id}/messages")
+def save_session_message(session_id: str, message: Dict[str, Any]):
+    engine = ContextEngine()
+    engine.save_message(session_id=session_id, message=message)
+    return {"success": True}
+
+@app.delete("/api/sessions/{session_id}")
+def delete_session(session_id: str):
+    engine = ContextEngine()
+    deleted = engine.delete_session(session_id=session_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Session not found")
+    return {"success": True, "deleted": session_id}
+
+@app.get("/api/history/queries")
+def get_query_history(limit: int = 50):
+    engine = ContextEngine()
+    return {"runs": engine.get_query_runs(limit=limit)}
+
 from fastapi.staticfiles import StaticFiles
 
 @app.post("/api/query")
 def run_query(req: QueryRequest):
     config = VeroConfig.load()
     db = DatabaseManager(dialect=config.database.dialect, connection_string=config.database.connection_string)
+    engine = ContextEngine()
     start_time = time.time()
     try:
         data = db.execute_query(req.sql, limit=req.limit or 100)
         duration_ms = round((time.time() - start_time) * 1000, 1)
+        row_count = data.get("row_count") or len(data.get("rows", []))
+        engine.record_query_run(sql=req.sql, duration_ms=duration_ms, row_count=row_count, error=None)
         return {"success": True, "data": data, "duration_ms": duration_ms}
     except Exception as e:
+        duration_ms = round((time.time() - start_time) * 1000, 1)
+        engine.record_query_run(sql=req.sql, duration_ms=duration_ms, row_count=0, error=str(e))
         raise HTTPException(status_code=400, detail=str(e))
 
 # Mount prebuilt Studio UI assets if present

@@ -2,10 +2,11 @@ from abc import ABC, abstractmethod
 from typing import Dict, Any, List, Optional
 from pathlib import Path
 import json
+import uuid
 import yaml
 from datetime import datetime, timezone
 from sqlalchemy import (
-    create_engine, text, Table, Column, String, Text, MetaData, Integer, DateTime
+    create_engine, text, Table, Column, String, Text, MetaData, Integer, Float, DateTime
 )
 
 class ContextStorage(ABC):
@@ -66,6 +67,42 @@ class ContextStorage(ABC):
         """Attaches custom business notes/annotations to a table."""
         pass
 
+    # --- Session & History Persistence ---
+    @abstractmethod
+    def get_sessions(self, domain: Optional[str] = None) -> List[Dict[str, Any]]:
+        """Returns past chat sessions."""
+        pass
+
+    @abstractmethod
+    def create_session(self, title: str, domain: str = "global") -> Dict[str, Any]:
+        """Creates a new chat session."""
+        pass
+
+    @abstractmethod
+    def get_session_messages(self, session_id: str) -> List[Dict[str, Any]]:
+        """Returns all messages for a session."""
+        pass
+
+    @abstractmethod
+    def save_message(self, session_id: str, message: Dict[str, Any]) -> None:
+        """Saves a message to a session."""
+        pass
+
+    @abstractmethod
+    def delete_session(self, session_id: str) -> bool:
+        """Deletes a chat session and its messages."""
+        pass
+
+    @abstractmethod
+    def record_query_run(self, sql: str, duration_ms: float, row_count: int, error: Optional[str] = None) -> None:
+        """Logs a query execution in the history."""
+        pass
+
+    @abstractmethod
+    def get_query_runs(self, limit: int = 50) -> List[Dict[str, Any]]:
+        """Returns recent query runs."""
+        pass
+
 
 class LocalContextStorage(ContextStorage):
     """File-based context storage with multi-domain partitioning support."""
@@ -76,12 +113,16 @@ class LocalContextStorage(ContextStorage):
         self.metrics_file = self.context_dir / "metrics.yaml"
         self.rules_file = self.context_dir / "RULES.md"
         self.domains_dir = self.context_dir / "domains"
+        self.history_dir = self.context_dir / "history"
+        self.sessions_file = self.history_dir / "sessions.json"
+        self.query_runs_file = self.history_dir / "query_runs.json"
         self._ensure_dirs()
 
     def _ensure_dirs(self) -> None:
         self.context_dir.mkdir(parents=True, exist_ok=True)
         self.schemas_dir.mkdir(parents=True, exist_ok=True)
         self.domains_dir.mkdir(parents=True, exist_ok=True)
+        self.history_dir.mkdir(parents=True, exist_ok=True)
 
     def get_domains(self) -> List[Dict[str, str]]:
         domains = [
@@ -150,7 +191,6 @@ class LocalContextStorage(ContextStorage):
 
         if not domain:
             return metrics
-        # Filter for global + specific domain
         return [m for m in metrics if m.get("domain") in ["global", domain]]
 
     def save_metric(self, metric: Dict[str, Any], domain: str = "global") -> None:
@@ -189,7 +229,6 @@ class LocalContextStorage(ContextStorage):
             for p in sorted(self.schemas_dir.glob("*.md")):
                 if p.name != "README.md":
                     content = p.read_text(encoding="utf-8")
-                    # Check domain header tag if present
                     table_domain = "global"
                     for line in content.split("\n")[:5]:
                         if line.startswith("<!-- domain:"):
@@ -226,6 +265,97 @@ class LocalContextStorage(ContextStorage):
             new_md = current_md.rstrip() + annotation_block
             
         file_path.write_text(new_md, encoding="utf-8")
+
+    # --- Session & History (Local JSON) ---
+    def _load_sessions_data(self) -> Dict[str, Any]:
+        if self.sessions_file.exists():
+            try:
+                return json.loads(self.sessions_file.read_text(encoding="utf-8"))
+            except Exception:
+                return {"sessions": [], "messages": {}}
+        return {"sessions": [], "messages": {}}
+
+    def _save_sessions_data(self, data: Dict[str, Any]) -> None:
+        self._ensure_dirs()
+        self.sessions_file.write_text(json.dumps(data, indent=2), encoding="utf-8")
+
+    def get_sessions(self, domain: Optional[str] = None) -> List[Dict[str, Any]]:
+        data = self._load_sessions_data()
+        sessions = data.get("sessions", [])
+        if domain and domain != "global":
+            return [s for s in sessions if s.get("domain") in ["global", domain]]
+        return sessions
+
+    def create_session(self, title: str, domain: str = "global") -> Dict[str, Any]:
+        data = self._load_sessions_data()
+        sess_id = str(uuid.uuid4())[:8]
+        new_sess = {
+            "id": sess_id,
+            "title": title,
+            "domain": domain,
+            "created_at": datetime.now(timezone.utc).isoformat()
+        }
+        data.setdefault("sessions", []).insert(0, new_sess)
+        data.setdefault("messages", {})[sess_id] = []
+        self._save_sessions_data(data)
+        return new_sess
+
+    def get_session_messages(self, session_id: str) -> List[Dict[str, Any]]:
+        data = self._load_sessions_data()
+        return data.get("messages", {}).get(session_id, [])
+
+    def save_message(self, session_id: str, message: Dict[str, Any]) -> None:
+        data = self._load_sessions_data()
+        messages = data.setdefault("messages", {}).setdefault(session_id, [])
+        msg_to_save = dict(message)
+        if "id" not in msg_to_save:
+            msg_to_save["id"] = str(uuid.uuid4())[:8]
+        if "created_at" not in msg_to_save:
+            msg_to_save["created_at"] = datetime.now(timezone.utc).isoformat()
+        messages.append(msg_to_save)
+        self._save_sessions_data(data)
+
+    def delete_session(self, session_id: str) -> bool:
+        data = self._load_sessions_data()
+        sessions = data.get("sessions", [])
+        filtered = [s for s in sessions if s["id"] != session_id]
+        if len(filtered) < len(sessions):
+            data["sessions"] = filtered
+            data.get("messages", {}).pop(session_id, None)
+            self._save_sessions_data(data)
+            return True
+        return False
+
+    def record_query_run(self, sql: str, duration_ms: float, row_count: int, error: Optional[str] = None) -> None:
+        self._ensure_dirs()
+        runs: List[Dict[str, Any]] = []
+        if self.query_runs_file.exists():
+            try:
+                runs = json.loads(self.query_runs_file.read_text(encoding="utf-8"))
+            except Exception:
+                runs = []
+        run_record = {
+            "id": str(uuid.uuid4())[:8],
+            "sql": sql,
+            "duration_ms": duration_ms,
+            "row_count": row_count,
+            "status": "error" if error else "success",
+            "error": error or "",
+            "executed_at": datetime.now(timezone.utc).isoformat()
+        }
+        runs.insert(0, run_record)
+        # Keep latest 200 runs
+        runs = runs[:200]
+        self.query_runs_file.write_text(json.dumps(runs, indent=2), encoding="utf-8")
+
+    def get_query_runs(self, limit: int = 50) -> List[Dict[str, Any]]:
+        if self.query_runs_file.exists():
+            try:
+                runs = json.loads(self.query_runs_file.read_text(encoding="utf-8"))
+                return runs[:limit]
+            except Exception:
+                return []
+        return []
 
 
 class DatabaseContextStorage(ContextStorage):
@@ -283,6 +413,39 @@ class DatabaseContextStorage(ContextStorage):
             Column("updated_at", DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
         )
 
+        self.sessions_table = Table(
+            "_vero_sessions",
+            self.metadata,
+            Column("id", String(64), primary_key=True),
+            Column("title", String(256), nullable=False),
+            Column("domain", String(64), default="global"),
+            Column("created_at", DateTime, default=lambda: datetime.now(timezone.utc)),
+            Column("updated_at", DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+        )
+
+        self.messages_table = Table(
+            "_vero_messages",
+            self.metadata,
+            Column("id", String(64), primary_key=True),
+            Column("session_id", String(64), nullable=False),
+            Column("role", String(32), nullable=False),
+            Column("text", Text, default=""),
+            Column("payload_json", Text, default=""),
+            Column("created_at", DateTime, default=lambda: datetime.now(timezone.utc))
+        )
+
+        self.query_runs_table = Table(
+            "_vero_query_runs",
+            self.metadata,
+            Column("id", Integer, primary_key=True, autoincrement=True),
+            Column("sql", Text, nullable=False),
+            Column("duration_ms", Float, default=0.0),
+            Column("row_count", Integer, default=0),
+            Column("status", String(32), default="success"),
+            Column("error", Text, default=""),
+            Column("executed_at", DateTime, default=lambda: datetime.now(timezone.utc))
+        )
+
         # Create tables and seed default domains
         self.metadata.create_all(self.engine)
         self._seed_default_domains()
@@ -318,7 +481,6 @@ class DatabaseContextStorage(ContextStorage):
 
     def get_rules(self, domain: str = "global") -> str:
         with self.engine.connect() as conn:
-            # Always get global rules
             global_res = conn.execute(
                 text("SELECT rule_text FROM _vero_rules WHERE domain = 'global' ORDER BY id DESC LIMIT 1")
             ).fetchone()
@@ -327,7 +489,6 @@ class DatabaseContextStorage(ContextStorage):
             if domain == "global":
                 return global_rules
 
-            # Domain specific rules
             domain_res = conn.execute(
                 text("SELECT rule_text FROM _vero_rules WHERE domain = :d ORDER BY id DESC LIMIT 1"),
                 {"d": domain}
@@ -446,3 +607,108 @@ class DatabaseContextStorage(ContextStorage):
                 text("UPDATE _vero_schemas SET annotations = :a, updated_at = :u WHERE table_name = :t"),
                 {"a": annotation.strip(), "u": datetime.now(timezone.utc), "t": table_name}
             )
+
+    # --- Session & History Persistence (Database) ---
+    def get_sessions(self, domain: Optional[str] = None) -> List[Dict[str, Any]]:
+        with self.engine.connect() as conn:
+            if domain and domain != "global":
+                query = text("SELECT id, title, domain, created_at FROM _vero_sessions WHERE domain IN ('global', :d) ORDER BY created_at DESC")
+                rows = conn.execute(query, {"d": domain}).fetchall()
+            elif domain == "global":
+                query = text("SELECT id, title, domain, created_at FROM _vero_sessions WHERE domain = 'global' ORDER BY created_at DESC")
+                rows = conn.execute(query).fetchall()
+            else:
+                query = text("SELECT id, title, domain, created_at FROM _vero_sessions ORDER BY created_at DESC")
+                rows = conn.execute(query).fetchall()
+
+            return [
+                {"id": r[0], "title": r[1], "domain": r[2], "created_at": str(r[3])}
+                for r in rows
+            ]
+
+    def create_session(self, title: str, domain: str = "global") -> Dict[str, Any]:
+        sess_id = str(uuid.uuid4())[:8]
+        now = datetime.now(timezone.utc)
+        with self.engine.begin() as conn:
+            conn.execute(
+                text("INSERT INTO _vero_sessions (id, title, domain, created_at, updated_at) VALUES (:i, :t, :d, :c, :u)"),
+                {"i": sess_id, "t": title, "d": domain, "c": now, "u": now}
+            )
+        return {"id": sess_id, "title": title, "domain": domain, "created_at": now.isoformat()}
+
+    def get_session_messages(self, session_id: str) -> List[Dict[str, Any]]:
+        with self.engine.connect() as conn:
+            rows = conn.execute(
+                text("SELECT id, role, text, payload_json, created_at FROM _vero_messages WHERE session_id = :s ORDER BY created_at ASC"),
+                {"s": session_id}
+            ).fetchall()
+            messages = []
+            for r in rows:
+                msg = {"id": r[0], "role": r[1], "text": r[2], "created_at": str(r[4])}
+                if r[3]:
+                    try:
+                        msg.update(json.loads(r[3]))
+                    except Exception:
+                        pass
+                messages.append(msg)
+            return messages
+
+    def save_message(self, session_id: str, message: Dict[str, Any]) -> None:
+        msg_id = message.get("id", str(uuid.uuid4())[:8])
+        role = message.get("role") or message.get("sender") or "user"
+        text_content = message.get("text", "")
+        # Store other fields in payload_json
+        payload = {k: v for k, v in message.items() if k not in ["id", "role", "sender", "text", "session_id"]}
+        payload_str = json.dumps(payload) if payload else ""
+
+        with self.engine.begin() as conn:
+            conn.execute(
+                text("INSERT INTO _vero_messages (id, session_id, role, text, payload_json, created_at) VALUES (:i, :s, :r, :t, :p, :c)"),
+                {
+                    "i": msg_id,
+                    "s": session_id,
+                    "r": role,
+                    "t": text_content,
+                    "p": payload_str,
+                    "c": datetime.now(timezone.utc)
+                }
+            )
+
+    def delete_session(self, session_id: str) -> bool:
+        with self.engine.begin() as conn:
+            conn.execute(text("DELETE FROM _vero_messages WHERE session_id = :s"), {"s": session_id})
+            res = conn.execute(text("DELETE FROM _vero_sessions WHERE id = :s"), {"s": session_id})
+            return res.rowcount > 0
+
+    def record_query_run(self, sql: str, duration_ms: float, row_count: int, error: Optional[str] = None) -> None:
+        with self.engine.begin() as conn:
+            conn.execute(
+                text("INSERT INTO _vero_query_runs (sql, duration_ms, row_count, status, error, executed_at) VALUES (:s, :d, :r, :st, :e, :ex)"),
+                {
+                    "s": sql,
+                    "d": duration_ms,
+                    "r": row_count,
+                    "st": "error" if error else "success",
+                    "e": error or "",
+                    "ex": datetime.now(timezone.utc)
+                }
+            )
+
+    def get_query_runs(self, limit: int = 50) -> List[Dict[str, Any]]:
+        with self.engine.connect() as conn:
+            rows = conn.execute(
+                text("SELECT id, sql, duration_ms, row_count, status, error, executed_at FROM _vero_query_runs ORDER BY id DESC LIMIT :lim"),
+                {"lim": limit}
+            ).fetchall()
+            return [
+                {
+                    "id": str(r[0]),
+                    "sql": r[1],
+                    "duration_ms": r[2],
+                    "row_count": r[3],
+                    "status": r[4],
+                    "error": r[5],
+                    "executed_at": str(r[6])
+                }
+                for r in rows
+            ]

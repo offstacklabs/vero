@@ -117,6 +117,28 @@ class ContextEngine:
     def save_table_annotation(self, table_name: str, annotation: str) -> None:
         self.storage.save_table_annotation(table_name, annotation)
 
+    # --- Session & History Persistence ---
+    def get_sessions(self, domain: Optional[str] = None) -> List[Dict[str, Any]]:
+        return self.storage.get_sessions(domain=domain)
+
+    def create_session(self, title: str, domain: str = "global") -> Dict[str, Any]:
+        return self.storage.create_session(title=title, domain=domain)
+
+    def get_session_messages(self, session_id: str) -> List[Dict[str, Any]]:
+        return self.storage.get_session_messages(session_id=session_id)
+
+    def save_message(self, session_id: str, message: Dict[str, Any]) -> None:
+        self.storage.save_message(session_id=session_id, message=message)
+
+    def delete_session(self, session_id: str) -> bool:
+        return self.storage.delete_session(session_id=session_id)
+
+    def record_query_run(self, sql: str, duration_ms: float, row_count: int, error: Optional[str] = None) -> None:
+        self.storage.record_query_run(sql=sql, duration_ms=duration_ms, row_count=row_count, error=error)
+
+    def get_query_runs(self, limit: int = 50) -> List[Dict[str, Any]]:
+        return self.storage.get_query_runs(limit=limit)
+
     def sync_schemas(self, schema_info: Dict[str, Any], domain: str = "global") -> None:
         """Converts introspected database schema into readable Markdown and saves to storage."""
         # Clean old schemas in storage for this domain
