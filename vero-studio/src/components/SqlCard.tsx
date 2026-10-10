@@ -1,11 +1,14 @@
 import React, { useState } from 'react';
-import { Copy, Check, ExternalLink, Database, Clock, Layers, Pin } from 'lucide-react';
+import { Copy, Check, ExternalLink, Database, Clock, Layers, Pin, Zap } from 'lucide-react';
 
 interface SqlCardProps {
   sql: string;
   durationMs?: number;
   rowCount?: number;
   dialect?: string;
+  bytesFormatted?: string;
+  costUsd?: number;
+  costGuardPassed?: boolean;
   onOpenInEditor?: (sql: string) => void;
   onPin?: () => void;
 }
@@ -14,7 +17,10 @@ export const SqlCard: React.FC<SqlCardProps> = ({
   sql,
   durationMs,
   rowCount,
-  dialect = 'Postgres',
+  dialect = 'BigQuery',
+  bytesFormatted,
+  costUsd,
+  costGuardPassed,
   onOpenInEditor,
   onPin
 }) => {
@@ -34,6 +40,12 @@ export const SqlCard: React.FC<SqlCardProps> = ({
             <Database size={11} />
             <span>{dialect}</span>
           </span>
+          {bytesFormatted && bytesFormatted !== '0 B' && (
+            <span className="sql-stat-tag" title="Projected Warehouse Scan & Cost">
+              <Zap size={11} color={costGuardPassed === false ? '#f85149' : 'var(--accent-color)'} />
+              <span>{bytesFormatted} {costUsd !== undefined && costUsd > 0 ? `($${costUsd.toFixed(4)})` : ''}</span>
+            </span>
+          )}
           {durationMs !== undefined && durationMs > 0 && (
             <span className="sql-stat-tag">
               <Clock size={11} />

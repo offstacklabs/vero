@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Play, RotateCcw, Copy, Check, Table as TableIcon, BarChart3, Clock, Layers, History, ArrowRight } from 'lucide-react';
+import { Play, RotateCcw, Copy, Check, Table as TableIcon, BarChart3, Clock, Layers, History, ArrowRight, Zap, ShieldCheck } from 'lucide-react';
 import { DataTable } from './DataTable';
 import { ChartVisualizer } from './ChartVisualizer';
 
@@ -23,7 +23,7 @@ interface SqlEditorProps {
 
 export const SqlEditor: React.FC<SqlEditorProps> = ({
   initialSql = 'SELECT * FROM customers LIMIT 10;',
-  dialect = 'Postgres',
+  dialect = 'BigQuery',
   onExecute,
   loading,
   apiBase = ''
@@ -35,6 +35,14 @@ export const SqlEditor: React.FC<SqlEditorProps> = ({
   const [duration, setDuration] = useState<number | null>(null);
   const [viewMode, setViewMode] = useState<'table' | 'chart' | 'history'>('table');
   const [queryRuns, setQueryRuns] = useState<QueryRun[]>([]);
+  const [estimating, setEstimating] = useState(false);
+  const [costEstimate, setCostEstimate] = useState<{
+    valid: boolean;
+    bytes_formatted?: string;
+    cost_usd?: number;
+    cost_guard_passed?: boolean;
+    error?: string;
+  } | null>(null);
 
   if (initialSql !== prevInitialSql) {
     setPrevInitialSql(initialSql);
@@ -56,6 +64,24 @@ export const SqlEditor: React.FC<SqlEditorProps> = ({
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [viewMode]);
+
+  const handleEstimateCost = async () => {
+    if (!sql.trim()) return;
+    setEstimating(true);
+    try {
+      const res = await fetch(`${apiBase}/api/query/estimate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sql })
+      });
+      const data = await res.json();
+      setCostEstimate(data);
+    } catch (err: any) {
+      setCostEstimate({ valid: false, error: err.message || String(err) });
+    } finally {
+      setEstimating(false);
+    }
+  };
 
   const handleRun = async () => {
     if (!sql.trim() || loading) return;
@@ -104,9 +130,39 @@ export const SqlEditor: React.FC<SqlEditorProps> = ({
             <RotateCcw size={13} />
             <span>Clear</span>
           </button>
+
+          <button 
+            className="editor-tool-btn" 
+            onClick={handleEstimateCost} 
+            disabled={estimating || !sql.trim()}
+            title="Perform dry-run compiler check and estimate data scan volume & cost"
+          >
+            <ShieldCheck size={13} color="var(--accent-color)" />
+            <span>{estimating ? 'Estimating...' : 'Dry Run'}</span>
+          </button>
         </div>
 
         <div className="editor-right-tools">
+          {costEstimate && (
+            <span 
+              className="editor-stat-pill"
+              style={{ 
+                color: costEstimate.valid && costEstimate.cost_guard_passed !== false ? 'var(--accent-color)' : 'var(--danger-color)',
+                backgroundColor: 'var(--bg-tertiary)',
+                padding: '2px 8px',
+                borderRadius: '4px',
+                border: '1px solid var(--border-color)'
+              }}
+              title="Dry Run Scan & Cost Estimate"
+            >
+              <Zap size={12} />
+              <span>
+                {costEstimate.valid 
+                  ? `${costEstimate.bytes_formatted || '0 B'}${costEstimate.cost_usd ? ` (~$${costEstimate.cost_usd.toFixed(4)})` : ''}` 
+                  : 'Compile Error'}
+              </span>
+            </span>
+          )}
           {duration !== null && (
             <span className="editor-stat-pill">
               <Clock size={12} />

@@ -66,6 +66,10 @@ interface Message {
   reflection_steps?: { attempt: number; failed_sql: string; error: string; thought?: string }[];
   is_streaming?: boolean;
   status_message?: string;
+  bytes_scanned?: number;
+  bytes_formatted?: string;
+  cost_usd?: number;
+  cost_guard_passed?: boolean;
   data?: {
     columns: string[];
     rows: any[][];
@@ -479,6 +483,10 @@ export default function App() {
                     suggested_followups: data.suggested_followups,
                     duration_ms: data.duration_ms,
                     reflection_steps: data.reflection_steps,
+                    bytes_scanned: data.bytes_scanned,
+                    bytes_formatted: data.bytes_formatted,
+                    cost_usd: data.cost_usd,
+                    cost_guard_passed: data.cost_guard_passed,
                     data: data.data,
                     suggested_visualization: data.suggested_visualization,
                     error: data.error,
@@ -735,6 +743,8 @@ export default function App() {
                       durationMs={msg.duration_ms}
                       dialect={dialect}
                       reflectionSteps={msg.reflection_steps}
+                      bytesFormatted={msg.bytes_formatted}
+                      costUsd={msg.cost_usd}
                     />
                   )}
 
@@ -745,6 +755,9 @@ export default function App() {
                       durationMs={msg.duration_ms}
                       rowCount={msg.data?.row_count}
                       dialect={dialect}
+                      bytesFormatted={msg.bytes_formatted}
+                      costUsd={msg.cost_usd}
+                      costGuardPassed={msg.cost_guard_passed}
                       onOpenInEditor={handleOpenInEditor}
                       onPin={() => handlePinTile({
                         title: msg.text.slice(0, 36) || 'Query Result',

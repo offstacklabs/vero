@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ChevronDown, ChevronRight, CheckCircle2, Database, Clock, Brain, Wrench, AlertTriangle } from 'lucide-react';
+import { ChevronDown, ChevronRight, CheckCircle2, Database, Clock, Brain, Wrench, AlertTriangle, Zap } from 'lucide-react';
 
 export interface ReflectionStep {
   attempt: number;
@@ -14,14 +14,18 @@ interface ReasoningStepsProps {
   durationMs?: number;
   dialect?: string;
   reflectionSteps?: ReflectionStep[];
+  bytesFormatted?: string;
+  costUsd?: number;
 }
 
 export const ReasoningSteps: React.FC<ReasoningStepsProps> = ({
   thought,
   tablesUsed = [],
   durationMs,
-  dialect = 'Postgres',
-  reflectionSteps = []
+  dialect = 'BigQuery',
+  reflectionSteps = [],
+  bytesFormatted,
+  costUsd
 }) => {
   const [expanded, setExpanded] = useState(false);
 
@@ -41,6 +45,12 @@ export const ReasoningSteps: React.FC<ReasoningStepsProps> = ({
             <span className="trace-pill" style={{ color: '#f59e0b', borderColor: 'rgba(245, 158, 11, 0.3)', backgroundColor: 'rgba(245, 158, 11, 0.1)' }}>
               <Wrench size={11} />
               <span>Self-Healed ({reflectionSteps.length})</span>
+            </span>
+          )}
+          {bytesFormatted && bytesFormatted !== '0 B' && (
+            <span className="trace-pill" title="Warehouse scan estimate">
+              <Zap size={11} color="var(--accent-color)" />
+              <span>{bytesFormatted}</span>
             </span>
           )}
           {tablesUsed && tablesUsed.length > 0 && (
@@ -105,9 +115,10 @@ export const ReasoningSteps: React.FC<ReasoningStepsProps> = ({
           <div className="trace-step">
             <div className="step-dot"></div>
             <div className="step-body">
-              <div className="step-label">SQL Execution Sandbox</div>
+              <div className="step-label">SQL Execution Sandbox & Cost Guard</div>
               <div className="step-desc">
-                Executed in read-only sandbox ({dialect}) in {durationMs ? `${durationMs}ms` : '< 20ms'}. Mutations verified blocked by AST parser.
+                Executed in read-only sandbox ({dialect}) in {durationMs ? `${durationMs}ms` : '< 20ms'}. 
+                {bytesFormatted && bytesFormatted !== '0 B' ? ` Dry run verified scan size: ${bytesFormatted}${costUsd ? ` (~$${costUsd.toFixed(4)})` : ''}.` : ' AST safety verified.'}
               </div>
             </div>
           </div>
