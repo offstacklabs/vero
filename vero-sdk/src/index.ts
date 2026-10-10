@@ -1,0 +1,1 @@
+export { VeroChat, type VeroChatProps } from './VeroChat';
