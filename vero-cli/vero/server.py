@@ -257,7 +257,16 @@ def run_query(req: QueryRequest):
         data = db.execute_query(req.sql, limit=req.limit or 100, enforce_cost_guard=True)
         duration_ms = round((time.time() - start_time) * 1000, 1)
         row_count = data.get("row_count") or len(data.get("rows", []))
-        engine.record_query_run(sql=req.sql, duration_ms=duration_ms, row_count=row_count, error=None)
+        bytes_scanned = data.get("bytes_scanned", 0)
+        cost_usd = data.get("cost_usd", 0.0)
+        engine.record_query_run(
+            sql=req.sql,
+            duration_ms=duration_ms,
+            row_count=row_count,
+            error=None,
+            bytes_scanned=bytes_scanned,
+            cost_usd=cost_usd
+        )
         return {"success": True, "data": data, "duration_ms": duration_ms}
     except Exception as e:
         duration_ms = round((time.time() - start_time) * 1000, 1)

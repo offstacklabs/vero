@@ -133,8 +133,23 @@ class ContextEngine:
     def delete_session(self, session_id: str) -> bool:
         return self.storage.delete_session(session_id=session_id)
 
-    def record_query_run(self, sql: str, duration_ms: float, row_count: int, error: Optional[str] = None) -> None:
-        self.storage.record_query_run(sql=sql, duration_ms=duration_ms, row_count=row_count, error=error)
+    def record_query_run(
+        self, 
+        sql: str, 
+        duration_ms: float, 
+        row_count: int, 
+        error: Optional[str] = None,
+        bytes_scanned: int = 0,
+        cost_usd: float = 0.0
+    ) -> None:
+        self.storage.record_query_run(
+            sql=sql, 
+            duration_ms=duration_ms, 
+            row_count=row_count, 
+            error=error,
+            bytes_scanned=bytes_scanned,
+            cost_usd=cost_usd
+        )
 
     def get_query_runs(self, limit: int = 50) -> List[Dict[str, Any]]:
         return self.storage.get_query_runs(limit=limit)

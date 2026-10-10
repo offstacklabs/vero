@@ -94,8 +94,16 @@ class ContextStorage(ABC):
         pass
 
     @abstractmethod
-    def record_query_run(self, sql: str, duration_ms: float, row_count: int, error: Optional[str] = None) -> None:
-        """Logs a query execution in the history."""
+    def record_query_run(
+        self, 
+        sql: str, 
+        duration_ms: float, 
+        row_count: int, 
+        error: Optional[str] = None,
+        bytes_scanned: int = 0,
+        cost_usd: float = 0.0
+    ) -> None:
+        """Logs a query execution in the history with telemetry."""
         pass
 
     @abstractmethod
@@ -343,7 +351,15 @@ class LocalContextStorage(ContextStorage):
             return True
         return False
 
-    def record_query_run(self, sql: str, duration_ms: float, row_count: int, error: Optional[str] = None) -> None:
+    def record_query_run(
+        self, 
+        sql: str, 
+        duration_ms: float, 
+        row_count: int, 
+        error: Optional[str] = None,
+        bytes_scanned: int = 0,
+        cost_usd: float = 0.0
+    ) -> None:
         self._ensure_dirs()
         runs: List[Dict[str, Any]] = []
         if self.query_runs_file.exists():
@@ -358,6 +374,8 @@ class LocalContextStorage(ContextStorage):
             "row_count": row_count,
             "status": "error" if error else "success",
             "error": error or "",
+            "bytes_scanned": bytes_scanned,
+            "cost_usd": cost_usd,
             "executed_at": datetime.now(timezone.utc).isoformat()
         }
         runs.insert(0, run_record)
@@ -491,6 +509,8 @@ class DatabaseContextStorage(ContextStorage):
             Column("row_count", Integer, default=0),
             Column("status", String(32), default="success"),
             Column("error", Text, default=""),
+            Column("bytes_scanned", Integer, default=0),
+            Column("cost_usd", Float, default=0.0),
             Column("executed_at", DateTime, default=lambda: datetime.now(timezone.utc))
         )
 
@@ -741,16 +761,26 @@ class DatabaseContextStorage(ContextStorage):
             res = conn.execute(text("DELETE FROM _vero_sessions WHERE id = :s"), {"s": session_id})
             return res.rowcount > 0
 
-    def record_query_run(self, sql: str, duration_ms: float, row_count: int, error: Optional[str] = None) -> None:
+    def record_query_run(
+        self, 
+        sql: str, 
+        duration_ms: float, 
+        row_count: int, 
+        error: Optional[str] = None,
+        bytes_scanned: int = 0,
+        cost_usd: float = 0.0
+    ) -> None:
         with self.engine.begin() as conn:
             conn.execute(
-                text("INSERT INTO _vero_query_runs (sql, duration_ms, row_count, status, error, executed_at) VALUES (:s, :d, :r, :st, :e, :ex)"),
+                text("INSERT INTO _vero_query_runs (sql, duration_ms, row_count, status, error, bytes_scanned, cost_usd, executed_at) VALUES (:s, :d, :r, :st, :e, :b, :c, :ex)"),
                 {
                     "s": sql,
                     "d": duration_ms,
                     "r": row_count,
                     "st": "error" if error else "success",
                     "e": error or "",
+                    "b": bytes_scanned,
+                    "c": cost_usd,
                     "ex": datetime.now(timezone.utc)
                 }
             )
@@ -758,7 +788,7 @@ class DatabaseContextStorage(ContextStorage):
     def get_query_runs(self, limit: int = 50) -> List[Dict[str, Any]]:
         with self.engine.connect() as conn:
             rows = conn.execute(
-                text("SELECT id, sql, duration_ms, row_count, status, error, executed_at FROM _vero_query_runs ORDER BY id DESC LIMIT :lim"),
+                text("SELECT id, sql, duration_ms, row_count, status, error, bytes_scanned, cost_usd, executed_at FROM _vero_query_runs ORDER BY id DESC LIMIT :lim"),
                 {"lim": limit}
             ).fetchall()
             return [
@@ -769,7 +799,9 @@ class DatabaseContextStorage(ContextStorage):
                     "row_count": r[3],
                     "status": r[4],
                     "error": r[5],
-                    "executed_at": str(r[6])
+                    "bytes_scanned": r[6] if len(r) > 6 else 0,
+                    "cost_usd": r[7] if len(r) > 7 else 0.0,
+                    "executed_at": str(r[8] if len(r) > 8 else r[6])
                 }
                 for r in rows
             ]
