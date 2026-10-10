@@ -274,6 +274,33 @@ class AuthManager:
         user = User(id=user_id, email=clean_email, name=name, role=role, allowed_domains=domains, is_active=True)
         return user, raw_api_key
 
+    def get_all_users(self) -> List[User]:
+        """Returns all registered users ordered by role and creation date."""
+        with self.engine.connect() as conn:
+            rows = conn.execute(
+                text("SELECT id, email, name, role, allowed_domains, is_active FROM _vero_users ORDER BY role = 'admin' DESC, created_at ASC")
+            ).fetchall()
+            return [
+                User(
+                    id=r[0],
+                    email=r[1],
+                    name=r[2],
+                    role=r[3],
+                    allowed_domains=json.loads(r[4]) if r[4] else ["*"],
+                    is_active=bool(r[5])
+                )
+                for r in rows
+            ]
+
+    def delete_user(self, user_id: str) -> bool:
+        """Deletes a user from the database."""
+        with self.engine.begin() as conn:
+            res = conn.execute(
+                text("DELETE FROM _vero_users WHERE id = :id"),
+                {"id": user_id}
+            )
+            return res.rowcount > 0
+
     def can_access_domain(self, user: User, domain: str) -> bool:
         """Enforces domain-level authorization partitioning."""
         if not domain or domain == "global":

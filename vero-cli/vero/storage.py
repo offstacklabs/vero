@@ -1,6 +1,7 @@
 from abc import ABC, abstractmethod
 from typing import Dict, Any, List, Optional
 from pathlib import Path
+import re
 import json
 import uuid
 import yaml
@@ -15,6 +16,11 @@ class ContextStorage(ABC):
     @abstractmethod
     def get_domains(self) -> List[Dict[str, str]]:
         """Returns registered domain namespaces (e.g. global, finance, marketing)."""
+        pass
+
+    @abstractmethod
+    def create_domain(self, domain_id: str, name: str, description: str = "") -> Dict[str, str]:
+        """Registers a new domain partition namespace."""
         pass
 
     @abstractmethod
@@ -162,6 +168,15 @@ class LocalContextStorage(ContextStorage):
                         "description": f"{d.name.capitalize()} business domain"
                     })
         return domains
+
+    def create_domain(self, domain_id: str, name: str, description: str = "") -> Dict[str, str]:
+        clean_id = re.sub(r"[^a-zA-Z0-9_\-]", "", domain_id.lower().strip())
+        domain_folder = self.domains_dir / clean_id
+        domain_folder.mkdir(parents=True, exist_ok=True)
+        rules_path = domain_folder / "RULES.md"
+        if not rules_path.exists():
+            rules_path.write_text(f"# {name} Domain Guidelines\n\n- Scope: {description}\n", encoding="utf-8")
+        return {"id": clean_id, "name": name, "description": description}
 
     def _get_domain_rules_file(self, domain: str) -> Path:
         if domain == "global":
@@ -619,6 +634,25 @@ class DatabaseContextStorage(ContextStorage):
                 {"id": r[0], "name": r[1], "description": r[2]}
                 for r in rows
             ]
+
+    def create_domain(self, domain_id: str, name: str, description: str = "") -> Dict[str, str]:
+        clean_id = re.sub(r"[^a-zA-Z0-9_\-]", "", domain_id.lower().strip())
+        with self.engine.begin() as conn:
+            exists = conn.execute(
+                text("SELECT 1 FROM _vero_domains WHERE id = :id"),
+                {"id": clean_id}
+            ).fetchone()
+            if exists:
+                conn.execute(
+                    text("UPDATE _vero_domains SET display_name = :n, description = :d WHERE id = :id"),
+                    {"id": clean_id, "n": name, "d": description}
+                )
+            else:
+                conn.execute(
+                    text("INSERT INTO _vero_domains (id, display_name, description) VALUES (:id, :n, :d)"),
+                    {"id": clean_id, "n": name, "d": description}
+                )
+        return {"id": clean_id, "name": name, "description": description}
 
     def get_rules(self, domain: str = "global") -> str:
         with self.engine.connect() as conn:

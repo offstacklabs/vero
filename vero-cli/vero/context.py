@@ -85,6 +85,9 @@ class ContextEngine:
     def get_domains(self) -> List[Dict[str, str]]:
         return self.storage.get_domains()
 
+    def create_domain(self, domain_id: str, name: str, description: str = "") -> Dict[str, str]:
+        return self.storage.create_domain(domain_id=domain_id, name=name, description=description)
+
     def get_rules(self, domain: str = "global") -> str:
         if self._in_memory_rules is not None:
             return self._in_memory_rules

@@ -341,5 +341,97 @@ def domains_list():
         table.add_row(d["id"], d["name"], d.get("description", "-"))
     console.print(table)
 
+@domains_app.command("add")
+def domains_add(
+    domain_id: str = typer.Argument(..., help="Unique domain slug (e.g. sales, logistics)"),
+    name: str = typer.Option(..., "--name", "-n", help="Display name (e.g. 'Sales & Operations')"),
+    description: str = typer.Option("", "--desc", "-d", help="Description of this domain scope")
+):
+    """Registers a new business domain partition."""
+    engine = ContextEngine()
+    created = engine.create_domain(domain_id=domain_id, name=name, description=description)
+    console.print(f"[bold green]✓ Created business domain:[/bold green] [cyan]{created['id']}[/cyan] ({created['name']})")
+
+users_app = typer.Typer(
+    name="users",
+    help="Manage enterprise users, roles, and domain-scoped access.",
+    no_args_is_help=True
+)
+app.add_typer(users_app, name="users")
+
+@users_app.command("list")
+def users_list():
+    """Lists all users and their assigned roles and domains."""
+    from vero.auth import AuthManager
+    mgr = AuthManager()
+    mgr.seed_default_admin()
+    users = mgr.get_all_users()
+
+    table = Table(title="Vero Users & Roles", show_header=True, header_style="bold magenta")
+    table.add_column("User ID", style="dim")
+    table.add_column("Name", style="white")
+    table.add_column("Email", style="cyan")
+    table.add_column("Role", style="magenta")
+    table.add_column("Allowed Domains", style="green")
+    table.add_column("Status", style="yellow")
+
+    for u in users:
+        domains_str = ", ".join(u.allowed_domains)
+        status_str = "Active" if u.is_active else "Inactive"
+        table.add_row(u.id, u.name, u.email, u.role.upper(), domains_str, status_str)
+
+    console.print(table)
+
+@users_app.command("add")
+def users_add(
+    email: str = typer.Argument(..., help="User's email address"),
+    name: str = typer.Option(..., "--name", "-n", help="User's full name"),
+    role: str = typer.Option("analyst", "--role", "-r", help="Role: admin, analyst, or viewer"),
+    domains: str = typer.Option("*", "--domains", "-d", help="Comma-separated allowed domains (e.g. 'finance,marketing' or '*')"),
+    password: Optional[str] = typer.Option(None, "--password", "-p", help="User password (optional, generates API key)")
+):
+    """Creates a new user and prints their credentials and API key."""
+    from vero.auth import AuthManager
+    mgr = AuthManager()
+    mgr.seed_default_admin()
+
+    clean_role = role.lower().strip()
+    if clean_role not in ["admin", "analyst", "viewer"]:
+        console.print(f"[bold red]✗ Invalid role '{role}'. Must be admin, analyst, or viewer.[/bold red]")
+        raise typer.Exit(1)
+
+    allowed = [d.strip() for d in domains.split(",") if d.strip()]
+    user, api_key = mgr.create_user(
+        email=email,
+        name=name,
+        password=password,
+        role=clean_role,
+        allowed_domains=allowed
+    )
+
+    console.print(Panel.fit(
+        f"[bold green]✓ User created successfully![/bold green]\n\n"
+        f"• [bold]ID:[/bold] {user.id}\n"
+        f"• [bold]Name:[/bold] {user.name}\n"
+        f"• [bold]Email:[/bold] {user.email}\n"
+        f"• [bold]Role:[/bold] {user.role.upper()}\n"
+        f"• [bold]Allowed Domains:[/bold] {', '.join(user.allowed_domains)}\n"
+        f"• [bold]API Key:[/bold] [yellow]{api_key}[/yellow]\n"
+        f"  (Store this API key safely; it will not be shown again)",
+        title="User Provisioned",
+        border_style="green"
+    ))
+
+@users_app.command("delete")
+def users_delete(user_id: str = typer.Argument(..., help="User ID to delete (e.g. usr_...)")):
+    """Deletes a user from the system."""
+    from vero.auth import AuthManager
+    mgr = AuthManager()
+    deleted = mgr.delete_user(user_id)
+    if deleted:
+        console.print(f"[bold green]✓ Deleted user {user_id}[/bold green]")
+    else:
+        console.print(f"[bold red]✗ User {user_id} not found[/bold red]")
+
 if __name__ == "__main__":
     app()
