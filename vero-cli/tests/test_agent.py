@@ -49,3 +49,43 @@ def test_self_healing_reflection_loop():
     assert result["sql"] == "SELECT title FROM products"
     assert result["data"] is not None
     assert result["data"]["rows"] == [["Widget"]]
+
+def test_agent_telemetry_tracking():
+    db = DatabaseManager(dialect="sqlite", connection_string="sqlite:///:memory:")
+    con = db.get_engine()
+    from sqlalchemy import text
+    with con.connect() as conn:
+        conn.execute(text("CREATE TABLE metrics (val INT);"))
+        conn.execute(text("INSERT INTO metrics VALUES (42);"))
+        conn.commit()
+
+    agent = VeroAgent(
+        config=VeroConfig(database=DatabaseConfig(dialect="sqlite", connection_string="sqlite:///:memory:")),
+        db_manager=db,
+        context_engine=ContextEngine()
+    )
+
+    agent.generate_sql = MagicMock(return_value={
+        "thought": "Get metric",
+        "sql": "SELECT val FROM metrics",
+        "explanation": "Return metric",
+        "suggested_visualization": "table",
+        "tables_used": ["metrics"],
+        "_telemetry": {
+            "prompt_tokens": 850,
+            "completion_tokens": 120,
+            "total_tokens": 970,
+            "llm_cost_usd": 0.0033
+        }
+    })
+
+    result = agent.ask("Get metric")
+    assert result["error"] is None
+    assert "telemetry" in result
+    tel = result["telemetry"]
+    assert tel["prompt_tokens"] == 850
+    assert tel["completion_tokens"] == 120
+    assert tel["total_tokens"] == 970
+    assert tel["llm_cost_usd"] == 0.0033
+    assert "spans" in tel
+    assert tel["spans"]["total_ms"] >= 0

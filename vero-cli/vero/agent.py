@@ -54,6 +54,23 @@ class VeroAgent:
             cleaned = re.sub(r"^```json\s*", "", raw_content.strip())
             cleaned = re.sub(r"\s*```$", "", cleaned)
             parsed = json.loads(cleaned)
+
+            # Record token usage & cost telemetry
+            usage = getattr(response, "usage", None)
+            prompt_tokens = getattr(usage, "prompt_tokens", 0) if usage else 0
+            completion_tokens = getattr(usage, "completion_tokens", 0) if usage else 0
+            total_tokens = getattr(usage, "total_tokens", prompt_tokens + completion_tokens) if usage else 0
+            try:
+                llm_cost = litellm.completion_cost(completion_response=response)
+            except Exception:
+                llm_cost = round((prompt_tokens * 0.0000025) + (completion_tokens * 0.00001), 6)
+
+            parsed["_telemetry"] = {
+                "prompt_tokens": prompt_tokens,
+                "completion_tokens": completion_tokens,
+                "total_tokens": total_tokens,
+                "llm_cost_usd": round(llm_cost or 0.0, 6)
+            }
             
             # Save to history for multi-turn
             self.history.append({"role": "user", "content": f"Question: {question}"})
@@ -123,6 +140,23 @@ class VeroAgent:
             cleaned = re.sub(r"^```json\s*", "", raw_content.strip())
             cleaned = re.sub(r"\s*```$", "", cleaned)
             parsed = json.loads(cleaned)
+
+            # Record token usage & cost telemetry
+            usage = getattr(response, "usage", None)
+            prompt_tokens = getattr(usage, "prompt_tokens", 0) if usage else 0
+            completion_tokens = getattr(usage, "completion_tokens", 0) if usage else 0
+            total_tokens = getattr(usage, "total_tokens", prompt_tokens + completion_tokens) if usage else 0
+            try:
+                llm_cost = litellm.completion_cost(completion_response=response)
+            except Exception:
+                llm_cost = round((prompt_tokens * 0.0000025) + (completion_tokens * 0.00001), 6)
+
+            parsed["_telemetry"] = {
+                "prompt_tokens": prompt_tokens,
+                "completion_tokens": completion_tokens,
+                "total_tokens": total_tokens,
+                "llm_cost_usd": round(llm_cost or 0.0, 6)
+            }
             
             # Record healed attempt to history
             self.history.append({"role": "user", "content": f"Query failed: {error_message}"})
@@ -145,13 +179,29 @@ class VeroAgent:
 
     def ask(self, question: str, execute: bool = True, max_retries: int = 2, domain: Optional[str] = None) -> Dict[str, Any]:
         """
-        End-to-end question answering with autonomous self-healing reflection loop:
+        End-to-end question answering with autonomous self-healing reflection loop and telemetry:
         1. Draft candidate SQL
         2. Validate AST safety
-        3. Execute against database
-        4. If error occurs, autonomously reflect and heal (up to max_retries)
+        3. Pre-execution dry-run cost estimation
+        4. Execute against database
+        5. If error occurs, autonomously reflect and heal (up to max_retries)
         """
+        t0 = time.time()
+        total_prompt_tokens = 0
+        total_completion_tokens = 0
+        total_llm_cost_usd = 0.0
+        spans = {"retrieval_ms": 0.0, "llm_ms": 0.0, "ast_ms": 0.0, "warehouse_ms": 0.0, "total_ms": 0.0}
+
+        t_llm0 = time.time()
         plan = self.generate_sql(question, domain=domain)
+        spans["llm_ms"] += round((time.time() - t_llm0) * 1000, 1)
+
+        if "_telemetry" in plan:
+            t = plan["_telemetry"]
+            total_prompt_tokens += t.get("prompt_tokens", 0)
+            total_completion_tokens += t.get("completion_tokens", 0)
+            total_llm_cost_usd += t.get("llm_cost_usd", 0.0)
+
         reflection_steps = []
         attempt = 0
 
@@ -176,7 +226,11 @@ class VeroAgent:
                 break
 
             # Step 1: AST Safety Check
-            if not self.db_manager.is_safe_query(sql):
+            t_ast0 = time.time()
+            is_safe = self.db_manager.is_safe_query(sql)
+            spans["ast_ms"] += round((time.time() - t_ast0) * 1000, 1)
+
+            if not is_safe:
                 err_msg = "AST validation failed: Query contains mutation operations or syntax error."
                 reflection_steps.append({
                     "attempt": attempt + 1,
@@ -186,7 +240,14 @@ class VeroAgent:
                 })
                 if attempt < max_retries:
                     attempt += 1
+                    t_heal0 = time.time()
                     plan = self.reflect_and_heal(question, sql, err_msg, attempt, domain=domain)
+                    spans["llm_ms"] += round((time.time() - t_heal0) * 1000, 1)
+                    if "_telemetry" in plan:
+                        t = plan["_telemetry"]
+                        total_prompt_tokens += t.get("prompt_tokens", 0)
+                        total_completion_tokens += t.get("completion_tokens", 0)
+                        total_llm_cost_usd += t.get("llm_cost_usd", 0.0)
                     continue
                 else:
                     result["error"] = err_msg
@@ -212,7 +273,14 @@ class VeroAgent:
                 })
                 if attempt < max_retries:
                     attempt += 1
+                    t_heal0 = time.time()
                     plan = self.reflect_and_heal(question, sql, err_msg, attempt, domain=domain)
+                    spans["llm_ms"] += round((time.time() - t_heal0) * 1000, 1)
+                    if "_telemetry" in plan:
+                        t = plan["_telemetry"]
+                        total_prompt_tokens += t.get("prompt_tokens", 0)
+                        total_completion_tokens += t.get("completion_tokens", 0)
+                        total_llm_cost_usd += t.get("llm_cost_usd", 0.0)
                     continue
                 else:
                     result["error"] = err_msg
@@ -229,8 +297,10 @@ class VeroAgent:
             start_time = time.time()
             try:
                 query_result = self.db_manager.execute_query(sql, enforce_cost_guard=True)
+                wh_dur = round((time.time() - start_time) * 1000, 1)
+                spans["warehouse_ms"] += wh_dur
                 result["data"] = query_result
-                result["duration_ms"] = round((time.time() - start_time) * 1000, 1)
+                result["duration_ms"] = wh_dur
                 result["sql"] = sql
                 result["thought"] = plan.get("thought", "")
                 result["explanation"] = plan.get("explanation", "")
@@ -249,19 +319,48 @@ class VeroAgent:
                 })
                 if attempt < max_retries:
                     attempt += 1
+                    t_heal0 = time.time()
                     plan = self.reflect_and_heal(question, sql, err_msg, attempt, domain=domain)
+                    spans["llm_ms"] += round((time.time() - t_heal0) * 1000, 1)
+                    if "_telemetry" in plan:
+                        t = plan["_telemetry"]
+                        total_prompt_tokens += t.get("prompt_tokens", 0)
+                        total_completion_tokens += t.get("completion_tokens", 0)
+                        total_llm_cost_usd += t.get("llm_cost_usd", 0.0)
                 else:
                     result["error"] = err_msg
                     result["sql"] = sql
                     break
+
+        spans["total_ms"] = round((time.time() - t0) * 1000, 1)
+        wh_cost = result.get("cost_usd", 0.0) or 0.0
+        tot_tokens = total_prompt_tokens + total_completion_tokens
+        tot_cost = round(total_llm_cost_usd + wh_cost, 6)
+
+        result["telemetry"] = {
+            "model": self.config.llm.model,
+            "prompt_tokens": total_prompt_tokens,
+            "completion_tokens": total_completion_tokens,
+            "total_tokens": tot_tokens,
+            "llm_cost_usd": round(total_llm_cost_usd, 6),
+            "warehouse_cost_usd": wh_cost,
+            "total_cost_usd": tot_cost,
+            "spans": spans
+        }
 
         return result
 
     def ask_stream(self, question: str, execute: bool = True, max_retries: int = 2, domain: Optional[str] = None):
         """
         Streaming generator that emits real-time agent execution stages,
-        reflection actions, and the final synthesized result.
+        reflection actions, cost/token telemetry, and the final synthesized result.
         """
+        t0 = time.time()
+        total_prompt_tokens = 0
+        total_completion_tokens = 0
+        total_llm_cost_usd = 0.0
+        spans = {"retrieval_ms": 0.0, "llm_ms": 0.0, "ast_ms": 0.0, "warehouse_ms": 0.0, "total_ms": 0.0}
+
         domain_label = f" ({domain.capitalize()})" if domain and domain != "global" else ""
         yield {
             "type": "stage",
@@ -275,7 +374,16 @@ class VeroAgent:
             "message": "Analyzing question & drafting candidate SQL..."
         }
 
+        t_llm0 = time.time()
         plan = self.generate_sql(question, domain=domain)
+        spans["llm_ms"] += round((time.time() - t_llm0) * 1000, 1)
+
+        if "_telemetry" in plan:
+            t = plan["_telemetry"]
+            total_prompt_tokens += t.get("prompt_tokens", 0)
+            total_completion_tokens += t.get("completion_tokens", 0)
+            total_llm_cost_usd += t.get("llm_cost_usd", 0.0)
+
         reflection_steps = []
         attempt = 0
 
@@ -306,7 +414,11 @@ class VeroAgent:
                 "sql": sql
             }
 
-            if not self.db_manager.is_safe_query(sql):
+            t_ast0 = time.time()
+            is_safe = self.db_manager.is_safe_query(sql)
+            spans["ast_ms"] += round((time.time() - t_ast0) * 1000, 1)
+
+            if not is_safe:
                 err_msg = "AST validation failed: Query contains mutation operations or syntax error."
                 reflection_steps.append({
                     "attempt": attempt + 1,
@@ -323,7 +435,14 @@ class VeroAgent:
                         "error": err_msg,
                         "message": f"AST rejection intercepted. Autonomously repairing (attempt {attempt})..."
                     }
+                    t_heal0 = time.time()
                     plan = self.reflect_and_heal(question, sql, err_msg, attempt, domain=domain)
+                    spans["llm_ms"] += round((time.time() - t_heal0) * 1000, 1)
+                    if "_telemetry" in plan:
+                        t = plan["_telemetry"]
+                        total_prompt_tokens += t.get("prompt_tokens", 0)
+                        total_completion_tokens += t.get("completion_tokens", 0)
+                        total_llm_cost_usd += t.get("llm_cost_usd", 0.0)
                     continue
                 else:
                     result["error"] = err_msg
@@ -369,7 +488,14 @@ class VeroAgent:
                         "error": err_msg,
                         "message": f"Cost Guard limit exceeded ({estimate['bytes_formatted']}). Self-repairing with partition filters (attempt {attempt})..."
                     }
+                    t_heal0 = time.time()
                     plan = self.reflect_and_heal(question, sql, err_msg, attempt, domain=domain)
+                    spans["llm_ms"] += round((time.time() - t_heal0) * 1000, 1)
+                    if "_telemetry" in plan:
+                        t = plan["_telemetry"]
+                        total_prompt_tokens += t.get("prompt_tokens", 0)
+                        total_completion_tokens += t.get("completion_tokens", 0)
+                        total_llm_cost_usd += t.get("llm_cost_usd", 0.0)
                     continue
                 else:
                     result["error"] = err_msg
@@ -392,8 +518,10 @@ class VeroAgent:
             start_time = time.time()
             try:
                 query_result = self.db_manager.execute_query(sql, enforce_cost_guard=True)
+                wh_dur = round((time.time() - start_time) * 1000, 1)
+                spans["warehouse_ms"] += wh_dur
                 result["data"] = query_result
-                result["duration_ms"] = round((time.time() - start_time) * 1000, 1)
+                result["duration_ms"] = wh_dur
                 result["sql"] = sql
                 result["thought"] = plan.get("thought", "")
                 result["explanation"] = plan.get("explanation", "")
@@ -419,11 +547,41 @@ class VeroAgent:
                         "error": err_msg,
                         "message": f"Database compiler error intercepted. Autonomously repairing (attempt {attempt})..."
                     }
+                    t_heal0 = time.time()
                     plan = self.reflect_and_heal(question, sql, err_msg, attempt, domain=domain)
+                    spans["llm_ms"] += round((time.time() - t_heal0) * 1000, 1)
+                    if "_telemetry" in plan:
+                        t = plan["_telemetry"]
+                        total_prompt_tokens += t.get("prompt_tokens", 0)
+                        total_completion_tokens += t.get("completion_tokens", 0)
+                        total_llm_cost_usd += t.get("llm_cost_usd", 0.0)
                 else:
                     result["error"] = err_msg
                     result["sql"] = sql
                     break
+
+        spans["total_ms"] = round((time.time() - t0) * 1000, 1)
+        wh_cost = result.get("cost_usd", 0.0) or 0.0
+        tot_tokens = total_prompt_tokens + total_completion_tokens
+        tot_cost = round(total_llm_cost_usd + wh_cost, 6)
+
+        result["telemetry"] = {
+            "model": self.config.llm.model,
+            "prompt_tokens": total_prompt_tokens,
+            "completion_tokens": total_completion_tokens,
+            "total_tokens": tot_tokens,
+            "llm_cost_usd": round(total_llm_cost_usd, 6),
+            "warehouse_cost_usd": wh_cost,
+            "total_cost_usd": tot_cost,
+            "spans": spans
+        }
+
+        yield {
+            "type": "stage",
+            "stage": "telemetry",
+            "message": f"Telemetry: {tot_tokens} tokens (~${total_llm_cost_usd:.4f}) | End-to-End: {spans['total_ms']}ms",
+            "telemetry": result["telemetry"]
+        }
 
         yield {
             "type": "complete",
