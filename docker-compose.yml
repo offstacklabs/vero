@@ -1,0 +1,42 @@
+services:
+  # Vero Headless Analytics Agent & Studio Web Workspace
+  vero:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: vero-studio
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - GOOGLE_APPLICATION_CREDENTIALS=${GOOGLE_APPLICATION_CREDENTIALS:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./vero-cli/.vero:/app/vero-cli/.vero
+
+  # Centralized Metadata & Context PostgreSQL Database
+  postgres:
+    image: postgres:16-alpine
+    container_name: vero-postgres
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_DB=vero_metadata
+      - POSTGRES_USER=vero_admin
+      - POSTGRES_PASSWORD=vero_secret
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U vero_admin -d vero_metadata"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - vero_pgdata:/var/lib/postgresql/data
+
+volumes:
+  vero_pgdata:

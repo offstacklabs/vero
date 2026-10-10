@@ -33,3 +33,11 @@ dev-ui:
 clean:
 	rm -rf vero-cli/vero/static/assets
 	rm -rf vero-cli/dist vero-cli/build vero-cli/*.egg-info
+
+# Run via Docker Compose (includes central PostgreSQL metadata DB)
+docker-up:
+	docker compose up --build -d
+
+# Stop Docker Compose
+docker-down:
+	docker compose down
