@@ -139,6 +139,15 @@ class ContextEngine:
     def get_query_runs(self, limit: int = 50) -> List[Dict[str, Any]]:
         return self.storage.get_query_runs(limit=limit)
 
+    def get_dashboard_tiles(self, domain: Optional[str] = None) -> List[Dict[str, Any]]:
+        return self.storage.get_dashboard_tiles(domain=domain)
+
+    def pin_tile(self, tile: Dict[str, Any], domain: str = "global") -> Dict[str, Any]:
+        return self.storage.pin_tile(tile=tile, domain=domain)
+
+    def unpin_tile(self, tile_id: str) -> bool:
+        return self.storage.unpin_tile(tile_id=tile_id)
+
     def sync_schemas(self, schema_info: Dict[str, Any], domain: str = "global") -> None:
         """Converts introspected database schema into readable Markdown and saves to storage."""
         # Clean old schemas in storage for this domain

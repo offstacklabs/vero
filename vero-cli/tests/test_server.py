@@ -166,3 +166,27 @@ def test_server_sessions_and_query_history():
     # 5. Delete session
     del_res = client.delete(f"/api/sessions/{sess_id}")
     assert del_res.status_code == 200
+
+def test_server_dashboard_tiles():
+    client = TestClient(app)
+
+    # 1. Pin a KPI tile
+    pin_res = client.post("/api/dashboard/tiles", json={
+        "title": "Quarterly Revenue",
+        "tile_type": "kpi",
+        "sql": "SELECT SUM(amount) FROM orders",
+        "domain": "finance",
+        "data": {"columns": ["revenue"], "rows": [["$1.2M"]]}
+    })
+    assert pin_res.status_code == 200
+    tile = pin_res.json()["tile"]
+    tile_id = tile["id"]
+
+    # 2. Get dashboard tiles
+    tiles_res = client.get("/api/dashboard/tiles?domain=finance")
+    assert tiles_res.status_code == 200
+    assert any(t["id"] == tile_id for t in tiles_res.json()["tiles"])
+
+    # 3. Unpin tile
+    unpin_res = client.delete(f"/api/dashboard/tiles/{tile_id}")
+    assert unpin_res.status_code == 200

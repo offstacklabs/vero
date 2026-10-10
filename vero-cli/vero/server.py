@@ -207,6 +207,34 @@ def get_query_history(limit: int = 50):
     engine = ContextEngine()
     return {"runs": engine.get_query_runs(limit=limit)}
 
+class TilePinRequest(BaseModel):
+    title: str
+    tile_type: str = "chart"  # kpi, chart, table
+    chart_type: Optional[str] = "bar"
+    sql: Optional[str] = ""
+    data: Optional[Dict[str, Any]] = None
+    domain: Optional[str] = "global"
+
+@app.get("/api/dashboard/tiles")
+def get_dashboard_tiles(domain: Optional[str] = None):
+    engine = ContextEngine()
+    return {"tiles": engine.get_dashboard_tiles(domain=domain)}
+
+@app.post("/api/dashboard/tiles")
+def pin_dashboard_tile(req: TilePinRequest):
+    engine = ContextEngine()
+    tile = req.model_dump()
+    pinned = engine.pin_tile(tile, domain=req.domain or "global")
+    return {"success": True, "tile": pinned}
+
+@app.delete("/api/dashboard/tiles/{tile_id}")
+def unpin_dashboard_tile(tile_id: str):
+    engine = ContextEngine()
+    unpinned = engine.unpin_tile(tile_id)
+    if not unpinned:
+        raise HTTPException(status_code=404, detail="Dashboard tile not found")
+    return {"success": True, "unpinned": tile_id}
+
 from fastapi.staticfiles import StaticFiles
 
 @app.post("/api/query")

@@ -103,6 +103,22 @@ class ContextStorage(ABC):
         """Returns recent query runs."""
         pass
 
+    # --- Pinned Dashboard Tiles ---
+    @abstractmethod
+    def get_dashboard_tiles(self, domain: Optional[str] = None) -> List[Dict[str, Any]]:
+        """Returns pinned dashboard tiles, optionally filtered by domain."""
+        pass
+
+    @abstractmethod
+    def pin_tile(self, tile: Dict[str, Any], domain: str = "global") -> Dict[str, Any]:
+        """Pins a KPI card, chart, or table to the dashboard."""
+        pass
+
+    @abstractmethod
+    def unpin_tile(self, tile_id: str) -> bool:
+        """Removes a pinned tile from the dashboard."""
+        pass
+
 
 class LocalContextStorage(ContextStorage):
     """File-based context storage with multi-domain partitioning support."""
@@ -116,6 +132,7 @@ class LocalContextStorage(ContextStorage):
         self.history_dir = self.context_dir / "history"
         self.sessions_file = self.history_dir / "sessions.json"
         self.query_runs_file = self.history_dir / "query_runs.json"
+        self.tiles_file = self.history_dir / "dashboard_tiles.json"
         self._ensure_dirs()
 
     def _ensure_dirs(self) -> None:
@@ -357,6 +374,37 @@ class LocalContextStorage(ContextStorage):
                 return []
         return []
 
+    def get_dashboard_tiles(self, domain: Optional[str] = None) -> List[Dict[str, Any]]:
+        if self.tiles_file.exists():
+            try:
+                tiles = json.loads(self.tiles_file.read_text(encoding="utf-8"))
+                if domain and domain != "global":
+                    return [t for t in tiles if t.get("domain") in ["global", domain]]
+                return tiles
+            except Exception:
+                return []
+        return []
+
+    def pin_tile(self, tile: Dict[str, Any], domain: str = "global") -> Dict[str, Any]:
+        self._ensure_dirs()
+        tiles = self.get_dashboard_tiles()
+        new_tile = dict(tile)
+        if "id" not in new_tile:
+            new_tile["id"] = str(uuid.uuid4())[:8]
+        new_tile["domain"] = tile.get("domain", domain)
+        new_tile["created_at"] = datetime.now(timezone.utc).isoformat()
+        tiles.insert(0, new_tile)
+        self.tiles_file.write_text(json.dumps(tiles, indent=2), encoding="utf-8")
+        return new_tile
+
+    def unpin_tile(self, tile_id: str) -> bool:
+        tiles = self.get_dashboard_tiles()
+        filtered = [t for t in tiles if t.get("id") != tile_id]
+        if len(filtered) < len(tiles):
+            self.tiles_file.write_text(json.dumps(filtered, indent=2), encoding="utf-8")
+            return True
+        return False
+
 
 class DatabaseContextStorage(ContextStorage):
     """
@@ -444,6 +492,19 @@ class DatabaseContextStorage(ContextStorage):
             Column("status", String(32), default="success"),
             Column("error", Text, default=""),
             Column("executed_at", DateTime, default=lambda: datetime.now(timezone.utc))
+        )
+
+        self.tiles_table = Table(
+            "_vero_dashboard_tiles",
+            self.metadata,
+            Column("id", String(64), primary_key=True),
+            Column("domain", String(64), default="global"),
+            Column("title", String(256), nullable=False),
+            Column("tile_type", String(32), default="chart"),
+            Column("chart_type", String(32), default="bar"),
+            Column("sql", Text, default=""),
+            Column("data_json", Text, default=""),
+            Column("created_at", DateTime, default=lambda: datetime.now(timezone.utc))
         )
 
         # Create tables and seed default domains
@@ -712,3 +773,64 @@ class DatabaseContextStorage(ContextStorage):
                 }
                 for r in rows
             ]
+
+    def get_dashboard_tiles(self, domain: Optional[str] = None) -> List[Dict[str, Any]]:
+        with self.engine.connect() as conn:
+            if domain and domain != "global":
+                query = text("SELECT id, domain, title, tile_type, chart_type, sql, data_json, created_at FROM _vero_dashboard_tiles WHERE domain IN ('global', :d) ORDER BY id DESC")
+                rows = conn.execute(query, {"d": domain}).fetchall()
+            else:
+                query = text("SELECT id, domain, title, tile_type, chart_type, sql, data_json, created_at FROM _vero_dashboard_tiles ORDER BY id DESC")
+                rows = conn.execute(query).fetchall()
+
+            results = []
+            for r in rows:
+                tile = {
+                    "id": r[0],
+                    "domain": r[1],
+                    "title": r[2],
+                    "tile_type": r[3],
+                    "chart_type": r[4],
+                    "sql": r[5],
+                    "created_at": str(r[7])
+                }
+                if r[6]:
+                    try:
+                        tile["data"] = json.loads(r[6])
+                    except Exception:
+                        tile["data"] = None
+                results.append(tile)
+            return results
+
+    def pin_tile(self, tile: Dict[str, Any], domain: str = "global") -> Dict[str, Any]:
+        tile_id = tile.get("id", str(uuid.uuid4())[:8])
+        target_domain = tile.get("domain", domain)
+        data_json = json.dumps(tile.get("data")) if tile.get("data") else ""
+        now = datetime.now(timezone.utc)
+        with self.engine.begin() as conn:
+            conn.execute(
+                text("INSERT INTO _vero_dashboard_tiles (id, domain, title, tile_type, chart_type, sql, data_json, created_at) VALUES (:i, :d, :t, :tt, :ct, :s, :dj, :c)"),
+                {
+                    "i": tile_id,
+                    "d": target_domain,
+                    "t": tile.get("title", "Untitled Metric"),
+                    "tt": tile.get("tile_type", "chart"),
+                    "ct": tile.get("chart_type", "bar"),
+                    "s": tile.get("sql", ""),
+                    "dj": data_json,
+                    "c": now
+                }
+            )
+        new_tile = dict(tile)
+        new_tile["id"] = tile_id
+        new_tile["domain"] = target_domain
+        new_tile["created_at"] = now.isoformat()
+        return new_tile
+
+    def unpin_tile(self, tile_id: str) -> bool:
+        with self.engine.begin() as conn:
+            res = conn.execute(
+                text("DELETE FROM _vero_dashboard_tiles WHERE id = :i"),
+                {"i": tile_id}
+            )
+            return res.rowcount > 0
