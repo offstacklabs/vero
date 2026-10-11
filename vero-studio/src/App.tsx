@@ -1697,21 +1697,76 @@ export default function App() {
                   <div style={{ display: 'flex', gap: '8px' }}>
                     <button 
                       className="editor-tool-btn"
-                      onClick={() => setShowImportMetricModal(true)}
+                      onClick={() => {
+                        setShowImportMetricModal(!showImportMetricModal);
+                        if (!showImportMetricModal) setShowAddMetric(false);
+                      }}
+                      title="Import metrics from Looker LookML, dbt, Cube, or Apache Ossie"
                     >
                       <RefreshCw size={12} />
-                      <span>Import LookML/dbt</span>
+                      <span>{showImportMetricModal ? 'Cancel Import' : 'Import (LookML / dbt / Ossie)'}</span>
                     </button>
                     <button 
                       className="save-rules-btn"
                       style={{ padding: '6px 12px', fontSize: '12px' }}
-                      onClick={() => setShowAddMetric(!showAddMetric)}
+                      onClick={() => {
+                        setShowAddMetric(!showAddMetric);
+                        if (!showAddMetric) setShowImportMetricModal(false);
+                      }}
                     >
                       <Plus size={13} />
                       <span>{showAddMetric ? 'Cancel' : 'Add Metric'}</span>
                     </button>
                   </div>
                 </div>
+
+                {showImportMetricModal && (
+                  <div className="metric-create-card" style={{ marginBottom: '16px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div style={{ fontWeight: 600, fontSize: '13px', color: 'var(--text-main)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <Database size={14} color="var(--accent-color)" />
+                        <span>Import Semantic Model (LookML / dbt / Cube / Apache Ossie)</span>
+                      </div>
+                      <button className="login-close-btn" style={{ padding: '0 4px', fontSize: '14px' }} onClick={() => setShowImportMetricModal(false)}>×</button>
+                    </div>
+
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '10px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        <label style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-muted)' }}>Source Framework:</label>
+                        <select 
+                          className="metric-input"
+                          style={{ maxWidth: '280px' }}
+                          value={importMetricSource}
+                          onChange={(e) => setImportMetricSource(e.target.value as any)}
+                        >
+                          <option value="ossie">Apache Ossie (OSI .yaml)</option>
+                          <option value="lookml">Looker (LookML .lkml)</option>
+                          <option value="dbt">dbt (manifest.json)</option>
+                          <option value="cube">Cube.js (Schema YAML/JSON)</option>
+                        </select>
+                      </div>
+
+                      <textarea 
+                        className="metric-input"
+                        style={{ height: '180px', fontFamily: 'var(--font-mono)', fontSize: '11px', resize: 'vertical' }}
+                        value={importMetricContent}
+                        onChange={(e) => setImportMetricContent(e.target.value)}
+                        placeholder={`Paste your ${importMetricSource === 'ossie' ? 'Apache Ossie YAML' : importMetricSource.toUpperCase()} definitions here...`}
+                        spellCheck={false}
+                      />
+
+                      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
+                        <button 
+                          className="save-rules-btn" 
+                          onClick={handleImportMetrics}
+                          disabled={importMetricLoading || !importMetricContent.trim()}
+                        >
+                          {importMetricLoading ? 'Importing...' : 'Sync Metrics to Vero'}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
 
                 {showAddMetric && (
                   <div className="metric-create-card" style={{ marginBottom: '16px' }}>
