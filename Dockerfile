@@ -25,14 +25,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Install uv for fast dependency management
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /bin/uv
 
-WORKDIR /app
+WORKDIR /app/vero-cli
 
 # Copy backend source and compiled frontend static assets
 COPY vero-cli/ /app/vero-cli/
 COPY --from=frontend-builder /build/vero-cli/vero/static/ /app/vero-cli/vero/static/
 
 # Install Python package and dependencies
-RUN cd /app/vero-cli && uv pip install -e . --system
+RUN uv pip install -e . --system
 
 # Environment variables
 ENV PYTHONUNBUFFERED=1
@@ -41,5 +41,5 @@ ENV PORT=8000
 
 EXPOSE 8000
 
-# Start Vero Studio server
-CMD ["vero", "serve", "--host", "0.0.0.0", "--port", "8000"]
+# Run Alembic migrations and start Vero Studio server
+CMD ["sh", "-c", "vero migrate && vero serve --host 0.0.0.0 --port 8000"]

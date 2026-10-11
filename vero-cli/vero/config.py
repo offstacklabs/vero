@@ -98,11 +98,47 @@ class VeroConfig(BaseModel):
     def load(cls) -> "VeroConfig":
         root = cls.get_workspace_root()
         path = root / ".vero" / "config.yaml"
-        if not path.exists():
-            return cls()
-        with open(path, "r", encoding="utf-8") as f:
-            data = yaml.safe_load(f) or {}
-            return cls(**data)
+        data = {}
+        if path.exists():
+            with open(path, "r", encoding="utf-8") as f:
+                data = yaml.safe_load(f) or {}
+
+        cfg = cls(**data)
+
+        # 12-Factor Environment Variable Overrides
+        env_dialect = os.getenv("VERO_DATABASE_DIALECT") or os.getenv("DATABASE_DIALECT")
+        if env_dialect:
+            cfg.database.dialect = env_dialect
+
+        env_db_url = os.getenv("VERO_DATABASE_CONNECTION_STRING") or os.getenv("VERO_DATABASE_URL") or os.getenv("DATABASE_URL")
+        if env_db_url:
+            cfg.database.connection_string = env_db_url
+            if "postgres" in env_db_url.lower() and not env_dialect:
+                cfg.database.dialect = "postgres"
+
+        env_storage_backend = os.getenv("VERO_STORAGE_BACKEND")
+        if env_storage_backend:
+            cfg.storage.backend = env_storage_backend
+
+        env_storage_url = os.getenv("VERO_STORAGE_CONNECTION_STRING")
+        if env_storage_url:
+            cfg.storage.connection_string = env_storage_url
+            if not env_storage_backend:
+                cfg.storage.backend = "database"
+
+        env_tier = os.getenv("VERO_LICENSE_TIER")
+        if env_tier:
+            cfg.license.tier = env_tier
+
+        env_model = os.getenv("VERO_LLM_MODEL") or os.getenv("LLM_MODEL")
+        if env_model:
+            cfg.llm.model = env_model
+
+        env_auth_mode = os.getenv("VERO_AUTH_MODE")
+        if env_auth_mode:
+            cfg.auth.mode = env_auth_mode
+
+        return cfg
 
     def save(self) -> None:
         root = self.get_workspace_root()

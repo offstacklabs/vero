@@ -13,6 +13,10 @@ services:
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
       - GEMINI_API_KEY=${GEMINI_API_KEY:-}
       - GOOGLE_APPLICATION_CREDENTIALS=${GOOGLE_APPLICATION_CREDENTIALS:-}
+      - VERO_STORAGE_BACKEND=database
+      - VERO_STORAGE_CONNECTION_STRING=postgresql+psycopg2://vero_admin:vero_secret@postgres:5432/vero_metadata
+      - VERO_DATABASE_DIALECT=postgres
+      - VERO_DATABASE_CONNECTION_STRING=postgresql+psycopg2://vero_admin:vero_secret@postgres:5432/vero_metadata
     depends_on:
       postgres:
         condition: service_healthy

@@ -11,8 +11,30 @@ from vero.config import VeroConfig
 from vero.context import ContextEngine
 from vero.db import DatabaseManager
 from vero.auth import AuthManager, User, create_access_token
+from contextlib import asynccontextmanager
 
-app = FastAPI(title="Vero Analytics Server", version="0.1.0")
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Auto-run Alembic database migrations and sync schemas on boot
+    try:
+        cfg = VeroConfig.load()
+        if cfg.storage.backend == "database" and cfg.storage.connection_string:
+            engine = ContextEngine()
+            engine.migrate()
+            mgr = AuthManager()
+            mgr.seed_default_admin()
+            try:
+                db = DatabaseManager(dialect=cfg.database.dialect, connection_string=cfg.database.connection_string)
+                schema_info = db.introspect_schema()
+                if schema_info:
+                    engine.sync_schemas(schema_info, domain="global")
+            except Exception:
+                pass
+    except Exception as e:
+        print(f"[Vero Server] Startup initialization note: {e}")
+    yield
+
+app = FastAPI(title="Vero Analytics Server", version="0.1.0", lifespan=lifespan)
 
 # Enable CORS for Studio UI & client integrations
 app.add_middleware(
