@@ -937,8 +937,24 @@ export default function App() {
       {/* Sidebar */}
       <aside className="sidebar">
         <div className="sidebar-header">
-          <span className="brand-badge">VERO</span>
-          <span className="sidebar-title">Analytics Studio</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span className="brand-badge">VERO</span>
+            <span className="sidebar-title">Analytics Studio</span>
+          </div>
+          <button 
+            className="sidebar-new-chat-icon-btn" 
+            onClick={handleNewSession} 
+            title="Start New Chat"
+          >
+            <MessageSquarePlus size={16} />
+          </button>
+        </div>
+
+        <div style={{ padding: '12px 14px 4px 14px' }}>
+          <button className="primary-new-chat-btn" onClick={handleNewSession} title="Start new conversation">
+            <Plus size={15} />
+            <span>New Chat</span>
+          </button>
         </div>
 
         <nav className="sidebar-nav">
@@ -967,10 +983,10 @@ export default function App() {
 
         {/* Chat Sessions / Threads */}
         <div className="sidebar-sessions-section">
-          <button className="new-chat-btn" onClick={handleNewSession} title="Start new conversation">
-            <MessageSquarePlus size={13} />
-            <span>New Chat</span>
-          </button>
+          <div className="sidebar-section-header">
+            <span>Recent Chats</span>
+            {sessions.length > 0 && <span className="session-count-tag">{sessions.length}</span>}
+          </div>
           {sessions.map(s => (
             <div 
               key={s.id} 
@@ -1034,6 +1050,14 @@ export default function App() {
       <main className="main-area">
         <header className="top-bar">
           <div className="top-bar-left">
+            <button 
+              className="topbar-new-chat-btn"
+              onClick={handleNewSession}
+              title="Start a new chat session"
+            >
+              <Plus size={13} />
+              <span>New Chat</span>
+            </button>
             <div className="domain-selector-wrapper" title="Filter context by business domain">
               <Layers size={13} color="var(--accent-color)" />
               <select
