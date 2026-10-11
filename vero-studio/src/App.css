@@ -1678,8 +1678,8 @@ body {
 
 .obs-kpi-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 16px;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 12px;
 }
 
 .obs-kpi-card {
@@ -1761,8 +1761,8 @@ body {
 
 .obs-rates-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 10px;
 }
 
 .obs-rate-pill {
@@ -2012,15 +2012,39 @@ body {
   margin-top: 6px;
 }
 
-/* Team & Domain Management Modal */
+/* Team & Domain & Settings Modal */
 .team-modal-card {
-  max-width: 650px !important;
+  max-width: 880px !important;
+  width: 90vw;
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.settings-modal-card {
+  max-width: 880px !important;
+  width: 90vw;
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
 .team-tab-content {
   display: flex;
   flex-direction: column;
   gap: 16px;
+  overflow-y: auto;
+  max-height: calc(85vh - 150px);
+  padding-right: 6px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.team-tab-content .observability-page {
+  padding: 0;
+  max-width: 100%;
 }
 
 .team-create-form {

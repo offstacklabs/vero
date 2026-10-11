@@ -263,11 +263,11 @@ export const ObservabilityDashboard: React.FC<ObservabilityDashboardProps> = ({
             No executed queries recorded yet.
           </div>
         ) : (
-          <div className="table-wrapper">
-            <table className="data-table">
+          <div className="table-wrapper" style={{ overflowX: 'auto', width: '100%' }}>
+            <table className="data-table" style={{ minWidth: '580px', width: '100%' }}>
               <thead>
                 <tr>
-                  <th style={{ width: '45%' }}>SQL Query</th>
+                  <th style={{ width: '40%' }}>SQL Query</th>
                   <th>Status</th>
                   <th>Scan Volume</th>
                   <th>Duration</th>
@@ -278,7 +278,7 @@ export const ObservabilityDashboard: React.FC<ObservabilityDashboardProps> = ({
               <tbody>
                 {s.top_expensive_queries.map((q, idx) => (
                   <tr key={idx}>
-                    <td style={{ fontFamily: 'var(--font-mono)', fontSize: '11.5px', maxWidth: '340px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    <td style={{ fontFamily: 'var(--font-mono)', fontSize: '11.5px', maxWidth: '260px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {q.sql}
                     </td>
                     <td>

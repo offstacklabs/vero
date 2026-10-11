@@ -1067,18 +1067,6 @@ export default function App() {
             )}
 
             <button 
-              className="theme-toggle-btn"
-              onClick={() => {
-                setTeamTab('rules');
-                setShowTeamModal(true);
-              }}
-              title="Workspace Knowledge, Observability & Settings"
-            >
-              <Settings size={13} />
-              <span>Settings</span>
-            </button>
-
-            <button 
               className="theme-toggle-btn icon-only"
               onClick={() => setTheme(prev => prev === 'light' ? 'dark' : 'light')}
               title={`Switch to ${theme === 'light' ? 'Dark' : 'Light'} Mode`}
