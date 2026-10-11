@@ -324,6 +324,23 @@ export default function App() {
     }
   };
 
+  // Close modals and popups on Escape key
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (showImportMetricModal) {
+          setShowImportMetricModal(false);
+        } else if (showTeamModal) {
+          setShowTeamModal(false);
+        } else if (showLoginModal) {
+          setShowLoginModal(false);
+        }
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [showImportMetricModal, showTeamModal, showLoginModal]);
+
   const handleCreateUser = async (e: React.FormEvent) => {
     e.preventDefault();
     setTeamLoading(true);
@@ -1378,7 +1395,7 @@ export default function App() {
 
             {/* Semantic Importer Modal */}
             {showImportMetricModal && (
-              <div className="login-modal-overlay">
+              <div className="login-modal-overlay" onClick={e => e.target === e.currentTarget && setShowImportMetricModal(false)}>
                 <div className="login-modal-card">
                   <div className="login-modal-header">
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -1560,7 +1577,7 @@ export default function App() {
 
       {/* Team & Domains Management Modal */}
       {showTeamModal && (
-        <div className="login-modal-overlay">
+        <div className="login-modal-overlay" onClick={e => e.target === e.currentTarget && setShowTeamModal(false)}>
           <div className="login-modal-card team-modal-card settings-modal-card">
             <div className="login-modal-header">
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -1896,7 +1913,7 @@ export default function App() {
 
       {/* Enterprise Login Modal */}
       {showLoginModal && (
-        <div className="login-modal-overlay">
+        <div className="login-modal-overlay" onClick={e => e.target === e.currentTarget && setShowLoginModal(false)}>
           <div className="login-modal-card">
             <div className="login-modal-header">
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
