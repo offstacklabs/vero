@@ -516,7 +516,12 @@ export default function App() {
       .then(res => res.json())
       .then(data => {
         if (data.messages && data.messages.length > 0) {
-          setMessages(data.messages);
+          setMessages(data.messages.map((m: any) => ({
+            ...m,
+            sender: m.sender || m.role || 'assistant'
+          })));
+        } else {
+          setMessages([]);
         }
       })
       .catch(() => console.error("Could not fetch session messages"));

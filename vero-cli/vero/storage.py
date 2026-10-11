@@ -819,10 +819,13 @@ class DatabaseContextStorage(ContextStorage):
             ).fetchall()
             messages = []
             for r in rows:
-                msg = {"id": r[0], "role": r[1], "text": r[2], "created_at": str(r[4])}
+                msg = {"id": r[0], "role": r[1], "sender": r[1], "text": r[2], "created_at": str(r[4])}
                 if r[3]:
                     try:
-                        msg.update(json.loads(r[3]))
+                        payload = json.loads(r[3])
+                        msg.update(payload)
+                        if "sender" not in msg:
+                            msg["sender"] = r[1]
                     except Exception:
                         pass
                 messages.append(msg)
