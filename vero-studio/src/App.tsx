@@ -1,19 +1,16 @@
 import { useState, useEffect } from 'react';
 import './App.css';
 import { 
-  Terminal, 
   Send, 
   Database,
   Bot,
   User,
   TerminalSquare,
   RefreshCw,
-  LineChart as LineChartIcon,
   Play,
   Sun,
   Moon,
   Loader2,
-  BookOpen,
   Plus,
   Trash2,
   BookmarkPlus,
@@ -22,11 +19,9 @@ import {
   MessageSquarePlus,
   MessageSquare,
   LayoutDashboard,
-  Activity,
   Lock,
   LogOut,
   Shield,
-  Users,
   Copy,
   CheckCircle2,
   AlertTriangle,
@@ -34,7 +29,8 @@ import {
   Info,
   X,
   Sparkles,
-  Layers
+  Layers,
+  Settings
 } from 'lucide-react';
 import { ChartVisualizer } from './components/ChartVisualizer';
 import { SqlEditor } from './components/SqlEditor';
@@ -308,7 +304,7 @@ export default function App() {
   };
 
   const [showTeamModal, setShowTeamModal] = useState<boolean>(false);
-  const [teamTab, setTeamTab] = useState<'users' | 'domains'>('users');
+  const [teamTab, setTeamTab] = useState<'rules' | 'metrics' | 'observability' | 'users' | 'domains'>('rules');
   const [userList, setUserList] = useState<UserProfile[]>([]);
   const [newUserForm, setNewUserForm] = useState({ email: '', name: '', password: '', role: 'analyst', domain: '*' });
   const [createdApiKey, setCreatedApiKey] = useState<string | null>(null);
@@ -933,8 +929,15 @@ export default function App() {
             className={`nav-item ${activeTab === 'chat' ? 'active' : ''}`}
             onClick={() => setActiveTab('chat')}
           >
-            <Terminal size={15} />
-            <span>Agent Copilot</span>
+            <Bot size={15} />
+            <span>Agent Chat</span>
+          </div>
+          <div 
+            className={`nav-item ${activeTab === 'dashboard' ? 'active' : ''}`}
+            onClick={() => setActiveTab('dashboard')}
+          >
+            <LayoutDashboard size={15} />
+            <span>Dashboards</span>
           </div>
           <div 
             className={`nav-item ${activeTab === 'scratchpad' ? 'active' : ''}`}
@@ -942,35 +945,6 @@ export default function App() {
           >
             <TerminalSquare size={15} />
             <span>SQL Studio</span>
-          </div>
-          <div 
-            className={`nav-item ${activeTab === 'dashboard' ? 'active' : ''}`}
-            onClick={() => setActiveTab('dashboard')}
-          >
-            <LayoutDashboard size={15} />
-            <span>Dashboard Canvas</span>
-          </div>
-          <div 
-            className={`nav-item ${activeTab === 'observability' ? 'active' : ''}`}
-            onClick={() => setActiveTab('observability')}
-            title="Observability & Cost Intelligence"
-          >
-            <Activity size={15} />
-            <span>Observability</span>
-          </div>
-          <div 
-            className={`nav-item ${activeTab === 'metrics' ? 'active' : ''}`}
-            onClick={() => setActiveTab('metrics')}
-          >
-            <LineChartIcon size={15} />
-            <span>Semantic Layer</span>
-          </div>
-          <div 
-            className={`nav-item ${activeTab === 'rules' ? 'active' : ''}`}
-            onClick={() => setActiveTab('rules')}
-          >
-            <BookOpen size={15} />
-            <span>Rules & Context</span>
           </div>
         </nav>
 
@@ -1022,6 +996,20 @@ export default function App() {
             onPreviewTable={handlePreviewTable}
             onQueryTable={handleQueryTable}
           />
+        </div>
+
+        <div className="sidebar-footer">
+          <button 
+            className="sidebar-settings-btn"
+            onClick={() => {
+              setTeamTab('rules');
+              setShowTeamModal(true);
+            }}
+            title="Workspace Knowledge, Observability & Settings"
+          >
+            <Settings size={14} />
+            <span>Knowledge & Settings</span>
+          </button>
         </div>
       </aside>
 
@@ -1081,41 +1069,21 @@ export default function App() {
             <button 
               className="theme-toggle-btn"
               onClick={() => {
-                if (licenseTier === 'oss') {
-                  addToast('Multi-tenant domain partitioning requires Vero Enterprise', 'warning');
-                  return;
-                }
-                setTeamTab('domains');
+                setTeamTab('rules');
                 setShowTeamModal(true);
               }}
-              title="Manage business domain namespaces (Enterprise Feature)"
+              title="Workspace Knowledge, Observability & Settings"
             >
-              {licenseTier === 'oss' ? <Lock size={13} color="#f59e0b" /> : <Layers size={13} color="var(--accent-color)" />}
-              <span>Domains</span>
+              <Settings size={13} />
+              <span>Settings</span>
             </button>
 
-            {currentUser?.role === 'admin' && (
-              <button 
-                className="theme-toggle-btn"
-                onClick={() => {
-                  fetchUsers();
-                  setTeamTab('users');
-                  setShowTeamModal(true);
-                }}
-                title="Manage Team Members & Roles"
-              >
-                <Users size={13} color="var(--accent-color)" />
-                <span>Team</span>
-              </button>
-            )}
-
             <button 
-              className="theme-toggle-btn"
+              className="theme-toggle-btn icon-only"
               onClick={() => setTheme(prev => prev === 'light' ? 'dark' : 'light')}
               title={`Switch to ${theme === 'light' ? 'Dark' : 'Light'} Mode`}
             >
               {theme === 'light' ? <Moon size={13} /> : <Sun size={13} />}
-              <span>{theme === 'light' ? 'Dark Mode' : 'Light Mode'}</span>
             </button>
           </div>
         </header>
@@ -1215,15 +1183,15 @@ export default function App() {
                           className="editor-tool-btn"
                           onClick={() => {
                             if (licenseTier === 'oss') {
-                              addToast('Automated Root Cause Analysis requires Vero Enterprise', 'warning');
+                              addToast('Automated Root Cause Analysis requires Vero Enterprise', 'info');
                               return;
                             }
                             handleRunDiagnostics(msg.id, msg.sql!);
                           }}
-                          title="Run automated RCA to find the statistical drivers of this metric (Enterprise Feature)"
+                          title="Run automated Root Cause Analysis to identify the primary drivers of this metric"
                         >
-                          {licenseTier === 'oss' ? <Lock size={13} color="#f59e0b" /> : <Sparkles size={13} color="var(--accent-color)" />}
-                          <span>Explain Why (Run Diagnostics)</span>
+                          <Sparkles size={13} color="var(--accent-color)" />
+                          <span>Explain Drivers</span>
                         </button>
                       )}
 
@@ -1605,26 +1573,50 @@ export default function App() {
       {/* Team & Domains Management Modal */}
       {showTeamModal && (
         <div className="login-modal-overlay">
-          <div className="login-modal-card team-modal-card">
+          <div className="login-modal-card team-modal-card settings-modal-card">
             <div className="login-modal-header">
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <Users size={18} color="var(--accent-color)" />
-                <h3 className="login-modal-title">Team & Domain Management</h3>
+                <Settings size={18} color="var(--accent-color)" />
+                <h3 className="login-modal-title">Knowledge & Settings</h3>
               </div>
               <button className="login-close-btn" onClick={() => setShowTeamModal(false)}>×</button>
             </div>
 
             <p className="login-modal-subtitle">
-              Provision enterprise users, assign role permissions, and partition warehouse domain scopes.
+              Manage organization rules, semantic metrics, warehouse observability, team access, and business domains.
             </p>
 
-            <div className="login-mode-tabs">
+            <div className="login-mode-tabs" style={{ marginBottom: '16px' }}>
+              <button 
+                type="button"
+                className={`login-mode-tab ${teamTab === 'rules' ? 'active' : ''}`}
+                onClick={() => setTeamTab('rules')}
+              >
+                Rules & Context
+              </button>
+              <button 
+                type="button"
+                className={`login-mode-tab ${teamTab === 'metrics' ? 'active' : ''}`}
+                onClick={() => setTeamTab('metrics')}
+              >
+                Semantic Layer ({semanticMetrics.length})
+              </button>
+              <button 
+                type="button"
+                className={`login-mode-tab ${teamTab === 'observability' ? 'active' : ''}`}
+                onClick={() => setTeamTab('observability')}
+              >
+                Observability
+              </button>
               <button 
                 type="button"
                 className={`login-mode-tab ${teamTab === 'users' ? 'active' : ''}`}
-                onClick={() => setTeamTab('users')}
+                onClick={() => {
+                  fetchUsers();
+                  setTeamTab('users');
+                }}
               >
-                Team Members ({userList.length})
+                Team ({userList.length})
               </button>
               <button 
                 type="button"
@@ -1634,6 +1626,138 @@ export default function App() {
                 Domains ({domains.length})
               </button>
             </div>
+
+            {teamTab === 'rules' && (
+              <div className="team-tab-content">
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                  <span style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-main)' }}>
+                    RULES.md (Organization-Wide SQL Guidelines)
+                  </span>
+                  <button 
+                    className="save-rules-btn" 
+                    onClick={handleSaveRules}
+                    disabled={rulesSaving}
+                  >
+                    {rulesSavedToast ? <Check size={13} /> : <Save size={13} />}
+                    <span>{rulesSavedToast ? 'Saved!' : rulesSaving ? 'Saving...' : 'Save Rules'}</span>
+                  </button>
+                </div>
+                <textarea 
+                  className="rules-textarea"
+                  style={{ height: '320px' }}
+                  value={rulesText}
+                  onChange={e => setRulesText(e.target.value)}
+                  placeholder="# Corporate SQL Guidelines&#10;- Always filter out test accounts&#10;- Fiscal year begins in February"
+                  spellCheck={false}
+                />
+              </div>
+            )}
+
+            {teamTab === 'metrics' && (
+              <div className="team-tab-content">
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                  <span style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-main)' }}>
+                    Verified Semantic Metrics
+                  </span>
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <button 
+                      className="editor-tool-btn"
+                      onClick={() => setShowImportMetricModal(true)}
+                    >
+                      <RefreshCw size={12} />
+                      <span>Import LookML/dbt</span>
+                    </button>
+                    <button 
+                      className="save-rules-btn"
+                      style={{ padding: '6px 12px', fontSize: '12px' }}
+                      onClick={() => setShowAddMetric(!showAddMetric)}
+                    >
+                      <Plus size={13} />
+                      <span>{showAddMetric ? 'Cancel' : 'Add Metric'}</span>
+                    </button>
+                  </div>
+                </div>
+
+                {showAddMetric && (
+                  <div className="metric-create-card" style={{ marginBottom: '16px' }}>
+                    <div style={{ fontWeight: 600, fontSize: '13px', color: 'var(--text-main)' }}>
+                      Define New Semantic Metric
+                    </div>
+                    <div className="metric-form-grid">
+                      <input
+                        type="text"
+                        className="metric-input"
+                        placeholder="Metric Name (e.g. gross_margin)"
+                        value={newMetric.name}
+                        onChange={e => setNewMetric({ ...newMetric, name: e.target.value })}
+                      />
+                      <input
+                        type="text"
+                        className="metric-input"
+                        placeholder="Description"
+                        value={newMetric.description}
+                        onChange={e => setNewMetric({ ...newMetric, description: e.target.value })}
+                      />
+                      <input
+                        type="text"
+                        className="metric-input"
+                        placeholder="SQL Formula (e.g. SUM(amount))"
+                        value={newMetric.sql}
+                        onChange={e => setNewMetric({ ...newMetric, sql: e.target.value })}
+                        style={{ gridColumn: 'span 2' }}
+                      />
+                    </div>
+                    <button 
+                      className="save-rules-btn" 
+                      onClick={handleCreateMetric}
+                      disabled={!newMetric.name || !newMetric.sql}
+                    >
+                      Save Metric
+                    </button>
+                  </div>
+                )}
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '350px', overflowY: 'auto' }}>
+                  {semanticMetrics.length === 0 ? (
+                    <div style={{ padding: '20px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '13px' }}>
+                      No semantic metrics defined yet. Click "Add Metric" or import from LookML/dbt.
+                    </div>
+                  ) : (
+                    semanticMetrics.map((m, idx) => (
+                      <div key={idx} className="semantic-metric-card">
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <span className="semantic-metric-name">{m.name}</span>
+                          <button 
+                            className="delete-user-btn" 
+                            onClick={() => handleDeleteMetric(m.name)}
+                            title="Delete Metric"
+                          >
+                            <Trash2 size={12} color="#f85149" />
+                          </button>
+                        </div>
+                        <div className="semantic-metric-desc">{m.description}</div>
+                        <code className="sql-box" style={{ margin: '4px 0 0 0', backgroundColor: 'var(--code-bg)', fontSize: '11px' }}>
+                          {m.sql}
+                        </code>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            )}
+
+            {teamTab === 'observability' && (
+              <div className="team-tab-content">
+                <ObservabilityDashboard 
+                  apiBase={API_BASE}
+                  onOpenQueryInEditor={(sql) => {
+                    setEditorSql(sql);
+                    setActiveTab('scratchpad');
+                    setShowTeamModal(false);
+                  }}
+                />
+              </div>
+            )}
 
             {teamTab === 'users' && (
               <div className="team-tab-content">

@@ -418,6 +418,51 @@ body {
   transition: all 0.15s ease;
 }
 
+.theme-toggle-btn.icon-only {
+  padding: 6px;
+  border-radius: 50%;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.sidebar-footer {
+  padding: 12px 14px;
+  border-top: 1px solid var(--border-color);
+  margin-top: auto;
+}
+
+.sidebar-settings-btn {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: 6px;
+  background-color: var(--bg-tertiary);
+  color: var(--text-muted);
+  border: 1px solid var(--border-color);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.sidebar-settings-btn:hover {
+  background-color: var(--bg-hover);
+  color: var(--text-main);
+  border-color: var(--accent-color);
+}
+
+.settings-modal-card {
+  max-width: 860px !important;
+  max-height: 88vh;
+  display: flex;
+  flex-direction: column;
+}
+
 .theme-toggle-btn:hover {
   background-color: var(--bg-hover);
   color: var(--accent-color);
