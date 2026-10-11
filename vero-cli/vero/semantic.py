@@ -222,10 +222,100 @@ class CubeSchemaParser:
 
         return metrics
 
+class OssieSemanticParser:
+    """
+    Parses Apache Ossie (Open Semantic Interchange / OSI) YAML or JSON definitions
+    into Vero native semantic metrics, dimension references, and AI context grounding.
+    """
+
+    @staticmethod
+    def parse_content(
+        content: Union[str, Dict[str, Any]], 
+        domain: str = "global", 
+        target_dialect: Optional[str] = None
+    ) -> List[SemanticMetric]:
+        metrics: List[SemanticMetric] = []
+
+        if isinstance(content, str):
+            try:
+                data = yaml.safe_load(content)
+            except Exception:
+                try:
+                    data = json.loads(content)
+                except Exception:
+                    data = {}
+        else:
+            data = content
+
+        if not isinstance(data, dict):
+            return []
+
+        # 1. Harvest dimension names from datasets
+        dataset_dimensions: Dict[str, List[str]] = {}
+        for ds in data.get("datasets", []):
+            ds_name = ds.get("name", "")
+            dims = []
+            for field in ds.get("fields", []):
+                if "dimension" in field or field.get("datatype") in ["String", "Date", "Timestamp"]:
+                    dims.append(field.get("name", ""))
+            dataset_dimensions[ds_name] = [d for d in dims if d]
+
+        # 2. Parse root-level metrics
+        raw_metrics = data.get("metrics", [])
+        for m in raw_metrics:
+            m_name = m.get("name")
+            desc = m.get("description", "")
+            
+            # Extract SQL expression based on dialect priority
+            expr_obj = m.get("expression", {})
+            dialects = expr_obj.get("dialects", []) if isinstance(expr_obj, dict) else []
+            
+            selected_sql = ""
+            if dialects:
+                if target_dialect:
+                    for d in dialects:
+                        if d.get("dialect", "").lower() == target_dialect.lower():
+                            selected_sql = d.get("expression", "")
+                            break
+
+                if not selected_sql:
+                    for d in dialects:
+                        if d.get("dialect", "").upper() == "ANSI_SQL":
+                            selected_sql = d.get("expression", "")
+                            break
+
+                if not selected_sql and len(dialects) > 0:
+                    selected_sql = dialects[0].get("expression", "")
+            elif isinstance(expr_obj, str):
+                selected_sql = expr_obj
+
+            # Extract ai_context synonyms if present
+            ai_ctx = m.get("ai_context", {})
+            synonyms = ai_ctx.get("synonyms", []) if isinstance(ai_ctx, dict) else []
+            if synonyms:
+                desc += f" (Synonyms: {', '.join(synonyms)})"
+
+            # Flatten all available dimensions
+            all_dims = []
+            for dims in dataset_dimensions.values():
+                all_dims.extend(dims)
+
+            metrics.append(SemanticMetric(
+                name=m_name,
+                domain=domain,
+                description=desc.strip(),
+                sql=selected_sql or m_name,
+                metric_type="aggregate",
+                dimensions=list(set(all_dims)),
+                imported_from="ossie"
+            ))
+
+        return metrics
+
 class SemanticImporter:
     """
     Unified manager for importing and synchronizing semantic metrics
-    from Looker (LookML), dbt (MetricFlow), and Cube into Vero's native semantic engine.
+    from Looker (LookML), dbt (MetricFlow), Cube, and Apache Ossie into Vero's native semantic engine.
     """
 
     def __init__(self, context_engine: Optional[ContextEngine] = None):
@@ -261,6 +351,14 @@ class SemanticImporter:
             return CubeSchemaParser.parse_content(raw, domain=domain)
         else:
             return CubeSchemaParser.parse_content(source, domain=domain)
+
+    def import_ossie(self, source: Union[str, Path, Dict[str, Any]], domain: str = "global", target_dialect: Optional[str] = None) -> List[SemanticMetric]:
+        """Parses Apache Ossie (Open Semantic Interchange) schema file or string."""
+        if isinstance(source, (str, Path)) and Path(source).is_file():
+            raw = Path(source).read_text(encoding="utf-8")
+            return OssieSemanticParser.parse_content(raw, domain=domain, target_dialect=target_dialect)
+        else:
+            return OssieSemanticParser.parse_content(source, domain=domain, target_dialect=target_dialect)
 
     def sync_to_vero(self, metrics: List[SemanticMetric], domain: str = "global") -> int:
         """Saves a batch of imported metrics to Vero's central metadata storage."""

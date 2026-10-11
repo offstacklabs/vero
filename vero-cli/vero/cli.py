@@ -354,14 +354,14 @@ def domains_add(
 
 @metrics_app.command("sync")
 def metrics_sync(
-    source: str = typer.Option(..., "--from", help="Source framework: lookml, dbt, or cube"),
+    source: str = typer.Option(..., "--from", help="Source framework: lookml, dbt, cube, or ossie"),
     path: str = typer.Option(..., "--path", "-p", help="Path to manifest.json, .lkml folder, or schema file"),
     domain: str = typer.Option("global", "--domain", "-d", help="Domain namespace to import into")
 ):
     """Imports and synchronizes external semantic metrics into Vero."""
     from vero.semantic import SemanticImporter
     from pathlib import Path
-    
+
     target = Path(path)
     if not target.exists():
         console.print(f"[bold red]✗ Path not found:[/bold red] {path}")
@@ -369,14 +369,17 @@ def metrics_sync(
 
     importer = SemanticImporter()
     try:
-        if source.lower() == "lookml":
+        s_lower = source.lower()
+        if s_lower == "lookml":
             metrics = importer.import_lookml(target, domain=domain)
-        elif source.lower() == "dbt":
+        elif s_lower == "dbt":
             metrics = importer.import_dbt(target, domain=domain)
-        elif source.lower() == "cube":
+        elif s_lower == "cube":
             metrics = importer.import_cube(target, domain=domain)
+        elif s_lower in ["ossie", "osi", "apache_ossie"]:
+            metrics = importer.import_ossie(target, domain=domain)
         else:
-            console.print(f"[bold red]✗ Unsupported source:[/bold red] {source}. Use lookml, dbt, or cube.")
+            console.print(f"[bold red]✗ Unsupported source:[/bold red] {source}. Use lookml, dbt, cube, or ossie.")
             raise typer.Exit(1)
 
         count = importer.sync_to_vero(metrics, domain=domain)

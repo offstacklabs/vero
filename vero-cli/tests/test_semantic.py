@@ -142,3 +142,71 @@ def test_semantic_importer_sync_to_vero():
 
     stored = engine.get_metrics(domain="product")
     assert any(m["name"] == "churn_rate" for m in stored)
+
+def test_parse_apache_ossie_schema():
+    from vero.semantic import OssieSemanticParser
+    
+    ossie_yaml = """
+    version: "0.2.0.dev0"
+    name: retail_sales_model
+    description: "Retail sales semantic model"
+
+    datasets:
+      - name: customers
+        source: analytics.dim_customers
+        fields:
+          - name: customer_id
+            datatype: Integer
+          - name: country
+            datatype: String
+            dimension:
+              is_time: false
+      - name: orders
+        source: analytics.fct_orders
+        fields:
+          - name: order_date
+            datatype: Date
+            dimension:
+              is_time: true
+          - name: amount
+            datatype: Decimal
+
+    metrics:
+      - name: total_revenue
+        description: "Gross customer spend"
+        datatype: Decimal
+        expression:
+          dialects:
+            - dialect: ANSI_SQL
+              expression: "SUM(orders.amount)"
+            - dialect: SNOWFLAKE
+              expression: "SUM(orders.amount::FLOAT)"
+        ai_context:
+          synonyms:
+            - "gross sales"
+            - "turnover"
+
+      - name: avg_order_value
+        description: "Average revenue per order"
+        expression:
+          dialects:
+            - dialect: ANSI_SQL
+              expression: "AVG(orders.amount)"
+    """
+
+    # 1. Parse with target dialect = snowflake
+    metrics_sf = OssieSemanticParser.parse_content(ossie_yaml, domain="finance", target_dialect="snowflake")
+    assert len(metrics_sf) == 2
+
+    m_map_sf = {m.name: m for m in metrics_sf}
+    assert m_map_sf["total_revenue"].sql == "SUM(orders.amount::FLOAT)"
+    assert "gross sales" in m_map_sf["total_revenue"].description
+    assert "country" in m_map_sf["total_revenue"].dimensions
+    assert "order_date" in m_map_sf["total_revenue"].dimensions
+
+    # 2. Parse with default ANSI_SQL fallback
+    metrics_ansi = OssieSemanticParser.parse_content(ossie_yaml, domain="finance")
+    m_map_ansi = {m.name: m for m in metrics_ansi}
+    assert m_map_ansi["total_revenue"].sql == "SUM(orders.amount)"
+    assert m_map_ansi["avg_order_value"].sql == "AVG(orders.amount)"
+

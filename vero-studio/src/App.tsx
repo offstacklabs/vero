@@ -150,7 +150,7 @@ export default function App() {
   const [rulesSavedToast, setRulesSavedToast] = useState(false);
   const [showAddMetric, setShowAddMetric] = useState(false);
   const [showImportMetricModal, setShowImportMetricModal] = useState(false);
-  const [importMetricSource, setImportMetricSource] = useState<'lookml' | 'dbt' | 'cube'>('lookml');
+  const [importMetricSource, setImportMetricSource] = useState<'lookml' | 'dbt' | 'cube' | 'ossie'>('lookml');
   const [importMetricContent, setImportMetricContent] = useState('');
   const [importMetricLoading, setImportMetricLoading] = useState(false);
   const [newMetric, setNewMetric] = useState({ name: '', description: '', sql: '', domain: 'global' });
@@ -1435,7 +1435,7 @@ export default function App() {
                   </div>
                   
                   <p className="login-modal-subtitle">
-                    Paste the contents of your LookML, dbt manifest, or Cube schema file below.
+                    Paste the contents of your LookML, dbt manifest, Cube schema, or Apache Ossie file below.
                   </p>
 
                   <div className="login-form">
@@ -1449,6 +1449,7 @@ export default function App() {
                         <option value="lookml">Looker (LookML .lkml)</option>
                         <option value="dbt">dbt (manifest.json)</option>
                         <option value="cube">Cube.js (Schema YAML/JSON)</option>
+                        <option value="ossie">Apache Ossie (OSI .yaml)</option>
                       </select>
                     </div>
 

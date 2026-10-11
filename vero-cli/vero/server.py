@@ -374,6 +374,9 @@ def import_metrics(req: MetricImportRequest, user: User = Depends(require_role([
             metrics = importer.import_dbt(req.content, domain=target_domain)
         elif source == "cube":
             metrics = importer.import_cube(req.content, domain=target_domain)
+        elif source in ["ossie", "osi", "apache_ossie"]:
+            config = VeroConfig.load()
+            metrics = importer.import_ossie(req.content, domain=target_domain, target_dialect=config.database.dialect)
         else:
             raise ValueError(f"Unsupported source format: {source}")
             
