@@ -1,6 +1,9 @@
 # Vero 🚀
 > **Open-Source Headless Analytics Agent Framework & AI Data Workspace (Nao Labs Alternative)**
-> [Website: verodata.dev](https://verodata.dev) • [Docs: docs.verodata.dev](https://docs.verodata.dev)
+> [Website: verodata.dev](https://verodata.dev) • [Docs: docs.verodata.dev](https://docs.verodata.dev) • [GitHub: offstacklabs/vero](https://github.com/offstacklabs/vero)
+
+* **Open-Source (OSS)**: [github.com/offstacklabs/vero](https://github.com/offstacklabs/vero) (Apache 2.0)
+* **Commercial (Enterprise)**: [github.com/offstacklabs/vero-enterprise](https://github.com/offstacklabs/vero-enterprise) (Proprietary)
 
 Vero is a headless analytics agent framework and AI-powered workspace built for data teams, analysts, and software engineers. It integrates directly with data warehouses (BigQuery, Snowflake, PostgreSQL, DuckDB, SQLite) to provide context-engineered Text-to-Insights, safe query sandboxes, a Model Context Protocol (MCP) endpoint for any AI editor or agent, and an interactive Analytics Studio.
 

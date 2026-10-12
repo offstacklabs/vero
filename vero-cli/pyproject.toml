@@ -31,6 +31,7 @@ vero = "vero.cli:app"
 [project.urls]
 Homepage = "https://verodata.dev"
 Documentation = "https://docs.verodata.dev"
+Repository = "https://github.com/offstacklabs/vero"
 
 [tool.hatch.build.targets.wheel]
 packages = ["vero"]
