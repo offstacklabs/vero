@@ -61,3 +61,28 @@ jobs:
         run: |
           cd vero-studio
           npm run build
+
+  test-sdk:
+    name: React SDK Build (@verodata/react)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: "npm"
+          cache-dependency-path: vero-sdk/package-lock.json
+
+      - name: Install Dependencies
+        run: |
+          cd vero-sdk
+          npm ci
+
+      - name: Build SDK Bundle (tsup)
+        run: |
+          cd vero-sdk
+          npm run build
