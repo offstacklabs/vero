@@ -13,10 +13,12 @@ services:
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
       - GEMINI_API_KEY=${GEMINI_API_KEY:-}
       - GOOGLE_APPLICATION_CREDENTIALS=${GOOGLE_APPLICATION_CREDENTIALS:-}
+      # Centralized Metadata & Context Storage (Alembic Managed)
       - VERO_STORAGE_BACKEND=database
       - VERO_STORAGE_CONNECTION_STRING=postgresql+psycopg2://vero_admin:vero_secret@postgres:5432/vero_metadata
-      - VERO_DATABASE_DIALECT=postgres
-      - VERO_DATABASE_CONNECTION_STRING=postgresql+psycopg2://vero_admin:vero_secret@postgres:5432/vero_metadata
+      # External Analytics Warehouse (Read-Only Source Data)
+      - VERO_DATABASE_DIALECT=${VERO_DATABASE_DIALECT:-bigquery}
+      - VERO_DATABASE_CONNECTION_STRING=${VERO_DATABASE_CONNECTION_STRING:-bigquery://my-project-id/my_analytics_dataset}
     depends_on:
       postgres:
         condition: service_healthy
