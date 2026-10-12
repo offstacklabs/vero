@@ -214,6 +214,20 @@ def studio(
     """Launches the Vero Studio web workspace and opens it in your browser."""
     serve(host=host, port=port, open_browser=True)
 
+@app.command("demo")
+def cli_demo(
+    host: str = typer.Option("127.0.0.1", "--host", "-h"),
+    port: int = typer.Option(8000, "--port", "-p"),
+):
+    """Spins up a zero-config B2B SaaS demo with embedded DuckDB and launches Studio."""
+    from vero.demo import provision_demo
+    console.print(Panel.fit("[bold magenta]Launching Vero Zero-Config B2B SaaS Demo[/bold magenta]\n[dim]Embedded DuckDB • Pre-built MRR/ARR Metrics • Business Guidelines[/dim]", border_style="magenta"))
+    with console.status("Provisioning demo warehouse and semantic rules..."):
+        db_path = provision_demo()
+    console.print(f"[bold green]✓ Demo warehouse initialized:[/bold green] [cyan]{db_path.name}[/cyan] (customers, subscriptions, invoices, mrr_movements)")
+    console.print(f"[bold green]✓ Pre-seeded semantic metrics:[/bold green] [cyan]mrr, arr, active_subscribers, gross_churn_usd[/cyan]")
+    serve(host=host, port=port, open_browser=True)
+
 dbt_app = typer.Typer(
     name="dbt",
     help="dbt Core integration and manifest synchronization.",
