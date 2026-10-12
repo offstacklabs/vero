@@ -1,0 +1,40 @@
+---
+title: "DuckDB"
+description: "Embedded analytical querying with DuckDB for local development, parquet files, and zero-config demos."
+---
+
+# DuckDB
+
+Vero natively embeds [DuckDB](https://duckdb.org/) for fast, local in-process analytical execution.
+
+---
+
+## Configuration
+
+In your `.vero/config.yaml`:
+
+```yaml
+version: "1.0"
+database:
+  dialect: "duckdb"
+  connection_string: "duckdb:///path/to/analytics.duckdb"
+```
+
+For an in-memory database:
+```yaml
+database:
+  dialect: "duckdb"
+  connection_string: "duckdb:///:memory:"
+```
+
+---
+
+## Querying Parquet and S3 Directly
+
+With DuckDB, Vero can query Parquet, CSV, and Iceberg tables directly from disk or cloud buckets:
+
+```sql
+SELECT * FROM read_parquet('s3://my-bucket/events/*.parquet') LIMIT 10;
+```
+
+Compute cost is always modeled at **$0.00** for local DuckDB operations.

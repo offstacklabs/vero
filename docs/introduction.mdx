@@ -1,0 +1,65 @@
+---
+title: "Introduction"
+description: "Vero is the open-source headless analytics agent framework and AI data workspace."
+---
+
+# Welcome to Vero 🚀
+
+Vero is an enterprise-grade, **open-source headless analytics agent framework** built for data engineering teams, product analysts, and developers.
+
+Instead of paying $100k+/year for rigid legacy BI platforms (Looker, Tableau) or spinning up heavy caching proxy clusters (Cube.js), Vero gives you an **autonomous AI reasoning agent** that compiles plain English questions directly into verified, highly-optimized SQL for your warehouse.
+
+```
+┌────────────────────────────────────────────────────────┐
+│      PUBLIC OSS REPO: github.com/offstacklabs/vero     │
+│             (Apache 2.0 / Free Core Engine)            │
+│                                                        │
+│  • Natural language SQL agent with reflexion loop      │
+│  • BigQuery, Snowflake, Postgres, DuckDB, SQLite       │
+│  • BigQuery native dry-run cost estimation             │
+│  • Embedded semantic query cache (0ms, $0 Compute)     │
+│  • Universal importer (LookML, dbt, Cube, Ossie)       │
+│  • React Studio Web Workspace                          │
+│  • Embedded React SDK (`@verodata/react`)              │
+└────────────────────────────────────────────────────────┘
+```
+
+---
+
+## ⚡ Core Value Propositions
+
+### 1. Zero-Middleware Architecture (Cube without the Cluster)
+Traditional semantic tools require deploying and maintaining a massive proxy cluster (Node.js workers, Redis caching, and Cube Store pre-aggregations). 
+Vero eliminates this entirely: queries run directly against your cloud data warehouse with **embedded AST query caching** ($0 compute, 0ms latency) backed by embedded DuckDB.
+
+### 2. Context Engineering over YAML Bureaucracy
+Stop writing 80 lines of nested YAML for basic metrics. With Vero:
+- **Formulas are pure SQL**: Defined in a lean `metrics.yaml` file (`SUM(amount)`).
+- **Rules are plain English**: Complex business guidelines and organizational exceptions live in `RULES.md` (*"Our fiscal year starts in February. Exclude test accounts with @internal.com"*).
+- The LLM dynamically reconciles rules and formulas at runtime.
+
+### 3. Pre-Execution Cost Guardrails
+AI agents without cost controls will bankrupt your data team with accidental full-table scans. 
+Vero executes native **BigQuery dry runs (`QueryJobConfig(dry_run=True)`)** before every query to calculate the exact scan byte volume and projected dollar cost at **$0 compute charges**. If a query exceeds your configured limit (e.g. 10 GB), Vero blocks execution and self-heals by injecting partition filters.
+
+### 4. 100% In-VPC Privacy & Sovereignty
+No customer data, warehouse credentials, or schemas ever leave your cloud perimeter. Vero runs completely inside your own infrastructure.
+
+---
+
+## 🚀 Get Started
+
+<CardGroup cols={2}>
+  <Card title="Quickstart (5 Mins)" icon="bolt" href="/quickstart">
+    Launch the zero-config demo with embedded DuckDB in 10 seconds.
+  </Card>
+  <Card title="Connect Your Warehouse" icon="database" href="/warehouses/bigquery">
+    Connect Google BigQuery, Snowflake, or PostgreSQL.
+  </Card>
+  <Card title="Import Semantic Layers" icon="file-import" href="/semantic-layer/importers">
+    Import your existing LookML, dbt, or Apache Ossie models.
+  </Card>
+  <Card title="Embedded React SDK" icon="code" href="/sdk/react">
+    Drop `<VeroChat />` into your SaaS app with `@verodata/react`.
+  </Card>
+</CardGroup>

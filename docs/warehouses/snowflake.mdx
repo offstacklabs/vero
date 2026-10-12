@@ -1,0 +1,38 @@
+---
+title: "Snowflake"
+description: "Connect Vero to Snowflake with credit compute tracking and warehouse sizing."
+---
+
+# Snowflake
+
+Vero connects to Snowflake using standard SQLAlchemy URLs and models query compute cost based on your warehouse size.
+
+---
+
+## Configuration
+
+In your `.vero/config.yaml`:
+
+```yaml
+version: "1.0"
+database:
+  dialect: "snowflake"
+  connection_string: "snowflake://<user>:<password>@<account>/<database>/<schema>?warehouse=<warehouse>&role=<role>"
+cost_guard:
+  rates:
+    snowflake_credit_usd: 3.00
+    snowflake_warehouse_size: "X-Small"
+```
+
+---
+
+## Compute Cost Calculation
+
+Snowflake charges by virtual warehouse credits per hour. Vero calculates execution compute as:
+
+$$\text{Cost} = \left(\frac{\text{duration\_seconds}}{3600}\right) \times \text{credits\_per\_hour} \times \$3.00$$
+
+* **X-Small**: 1 credit/hour
+* **Small**: 2 credits/hour
+* **Medium**: 4 credits/hour
+* **Large**: 8 credits/hour

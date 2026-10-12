@@ -1,0 +1,85 @@
+---
+title: "Quickstart"
+description: "Get started with Vero in under 5 minutes using our zero-config demo or connecting your own warehouse."
+---
+
+# Quickstart Guide ⚡
+
+Follow this guide to get Vero running on your local machine in under 5 minutes.
+
+---
+
+## 1. Prerequisites
+* **Python**: 3.11 or higher
+* **Package Manager**: [uv](https://github.com/astral-sh/uv) (recommended) or standard `pip`
+
+Install `uv` (if not already installed):
+```bash
+curl -LsSf https://astral.sh/uv/install.sh | sh
+```
+
+---
+
+## 2. Zero-Config Demo Mode (`vero demo`)
+
+The fastest way to experience Vero with zero cloud warehouse setup:
+
+```bash
+# Clone the repository
+git clone https://github.com/offstacklabs/vero.git
+cd vero/vero-cli
+
+# Launch the interactive zero-config B2B SaaS demo
+uv run vero demo
+```
+
+### What Happens Behind the Scenes:
+1. Provisions an embedded **DuckDB warehouse** (`.vero/demo_warehouse.duckdb`) pre-seeded with 12 customers, active subscriptions, invoices, and MRR movements.
+2. Injects pre-built **semantic metrics** (`mrr`, `arr`, `active_subscribers`, `gross_churn_usd`).
+3. Injects business accounting guidelines (`RULES.md`).
+4. Launches **Vero Studio** and opens your default browser at `http://localhost:8000`.
+
+Try asking:
+* *"What is our total MRR this month?"*
+* *"Show our top 5 enterprise customers by revenue"*
+* *"Break down active subscribers by industry"*
+
+---
+
+## 3. Connect Your Own Warehouse
+
+To initialize Vero against your company's actual database:
+
+```bash
+# 1. Initialize configuration in your analytics directory
+uv run vero init
+
+# 2. Configure your warehouse connection in .vero/config.yaml:
+# (Supports BigQuery, Snowflake, PostgreSQL, or DuckDB)
+```
+
+Example configuration (`.vero/config.yaml`):
+```yaml
+version: "1.0"
+database:
+  dialect: "bigquery"
+  connection_string: "bigquery://my-gcp-project/my_analytics_dataset"
+llm:
+  model: "gpt-4o"
+  temperature: 0.0
+cost_guard:
+  enabled: true
+  max_bytes_scanned: 10737418240 # 10 GB safety limit
+cache:
+  enabled: true
+  ttl_seconds: 3600 # 1 hour semantic caching
+```
+
+```bash
+# 3. Introspect schemas & generate context files
+uv run vero sync
+
+# 4. Launch the web workspace
+uv run vero studio
+```
+Vero Studio is now running at `http://localhost:8000` with full schema intelligence!

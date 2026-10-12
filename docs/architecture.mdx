@@ -1,0 +1,62 @@
+---
+title: "Architecture"
+description: "How Vero compiles natural language into verified, cost-guarded SQL."
+---
+
+# Architecture & Execution Pipeline
+
+Vero operates as a **Headless Analytics Agent**. It bridges natural language user intent and cloud data warehouses through an iterative, self-healing compiler loop.
+
+---
+
+## The Execution Flow
+
+```
+User Query: "What was Q3 gross margin by region?"
+     │
+     ▼
+[ Context Engine ]
+     │ ➔ Injects RULES.md (accounting guidelines)
+     │ ➔ Injects metrics.yaml (verified formulas)
+     │ ➔ Injects Table Schemas & Foreign Keys
+     ▼
+[ Semantic AST Cache Check ]
+     │ ➔ Checks local SQLite/DuckDB cache for matching query hash
+     │ ➔ IF HIT: Returns in 0.0ms ($0.00 cloud compute cost)
+     ▼
+[ Agent Reflexion Loop (LLM) ]
+     │ ➔ Synthesizes dialect-optimized SQL
+     │ ➔ AST Read-Only Validation (Blocks mutations)
+     ▼
+[ Pre-Execution Cost Guard ]
+     │ ➔ BigQuery Dry Run ($0 compute charge)
+     │ ➔ Evaluates projected scan bytes vs. safety limit (10 GB)
+     │ ➔ IF OVER LIMIT: Blocks query & feeds error to Reflexion loop to inject partition filters
+     ▼
+[ Cloud Data Warehouse Execution ]
+     │ ➔ BigQuery / Snowflake / Postgres / DuckDB
+     │ ➔ IF SYNTAX ERROR: Catches raw error & self-heals (up to 3 reflexion retries)
+     ▼
+[ Data Governance & PII Redaction ]
+     │ ➔ Detects sensitive columns (emails, phones, SSNs)
+     │ ➔ Cell-level masking before results leave server
+     ▼
+[ Streaming Response & Visualization ]
+     │ ➔ Streams explanation, SQL Card, Recharts visualizer, & Latency Waterfall
+```
+
+---
+
+## Core Subsystems
+
+### 1. Context Engine (`vero/context.py`)
+Centralizes metadata without external server bloat:
+* **`RULES.md`**: Human-readable organizational knowledge (*"Our fiscal year begins in February"*).
+* **`metrics.yaml`**: Pure SQL formula definitions (*`gross_margin: (SUM(rev) - SUM(cost)) / NULLIF(SUM(rev), 0)`*).
+* **Schema Markdown**: Automatically introspected table definitions, primary keys, and column comments.
+
+### 2. Autonomous Reflexion Loop (`vero/agent.py`)
+If a query encounters a database error (missing join key, dialect syntax mismatch), Vero catches the raw compiler trace, analyzes the failure against schema metadata, and self-heals the query in milliseconds before returning to the user.
+
+### 3. Safety Sandbox & AST Validator (`vero/db.py`)
+Uses `sqlglot` to parse the Abstract Syntax Tree (AST) of every query. Ensures only pure `SELECT` operations execute, blocking any data-mutating statements (`DROP`, `DELETE`, `UPDATE`, `ALTER`, `TRUNCATE`).

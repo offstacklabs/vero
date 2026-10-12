@@ -1,0 +1,34 @@
+---
+title: "PostgreSQL"
+description: "Connect Vero to PostgreSQL, Amazon RDS, Supabase, or Neon with 30-second query timeouts."
+---
+
+# PostgreSQL
+
+Connect Vero to any PostgreSQL database (AWS RDS, Supabase, Neon, or self-hosted).
+
+---
+
+## Configuration
+
+In your `.vero/config.yaml`:
+
+```yaml
+version: "1.0"
+database:
+  dialect: "postgres"
+  connection_string: "postgresql+psycopg2://user:password@host:5432/dbname"
+```
+
+Environment variable override:
+```bash
+export VERO_DATABASE_URL="postgresql+psycopg2://user:password@host:5432/dbname"
+```
+
+---
+
+## Safety Features
+
+* **Read-Only Enforced**: Only pure `SELECT` operations are allowed.
+* **Automatic Timeout**: Vero sets `SET statement_timeout = '30s'` on every connection to prevent runaway locks.
+* **Hourly Rate Modeling**: Modeled at estimated instance run-cost (default: `$0.10/hour`).

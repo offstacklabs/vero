@@ -1,0 +1,76 @@
+{
+  "$schema": "https://mintlify.com/schema.json",
+  "name": "Vero",
+  "logo": {
+    "dark": "/logo.svg",
+    "light": "/logo.svg"
+  },
+  "favicon": "/favicon.svg",
+  "colors": {
+    "primary": "#8b5cf6",
+    "light": "#a855f7",
+    "dark": "#7c3aed"
+  },
+  "topbarLinks": [
+    {
+      "name": "Website",
+      "url": "https://verodata.dev"
+    }
+  ],
+  "topbarCtaButton": {
+    "name": "GitHub",
+    "url": "https://github.com/offstacklabs/vero"
+  },
+  "navigation": [
+    {
+      "group": "Getting Started",
+      "pages": [
+        "introduction",
+        "quickstart",
+        "architecture"
+      ]
+    },
+    {
+      "group": "Data Warehouses",
+      "pages": [
+        "warehouses/bigquery",
+        "warehouses/snowflake",
+        "warehouses/postgres",
+        "warehouses/duckdb"
+      ]
+    },
+    {
+      "group": "Semantic Layer",
+      "pages": [
+        "semantic-layer/overview",
+        "semantic-layer/importers",
+        "semantic-layer/apache-ossie"
+      ]
+    },
+    {
+      "group": "Performance & Safety",
+      "pages": [
+        "caching/semantic-cache",
+        "caching/cost-guard"
+      ]
+    },
+    {
+      "group": "Developer SDKs",
+      "pages": [
+        "sdk/react",
+        "sdk/mcp"
+      ]
+    },
+    {
+      "group": "Enterprise Edition",
+      "pages": [
+        "enterprise/overview",
+        "enterprise/sso",
+        "enterprise/governance"
+      ]
+    }
+  ],
+  "footerSocials": {
+    "github": "https://github.com/offstacklabs/vero"
+  }
+}

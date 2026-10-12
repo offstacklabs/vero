@@ -1,0 +1,38 @@
+---
+title: "Corporate SSO & Directory Sync"
+description: "Configure Okta, Azure Active Directory, and OneLogin OIDC authentication in Vero Enterprise."
+---
+
+# Corporate SSO (OIDC)
+
+Vero Enterprise natively supports OpenID Connect (OIDC) authentication with major enterprise identity providers:
+* **Okta**
+* **Microsoft Azure Active Directory (Entra ID)**
+* **OneLogin**
+
+---
+
+## Configuration
+
+In `.vero/config.yaml`:
+
+```yaml
+auth:
+  mode: "oidc"
+  oidc:
+    provider_name: "Okta"
+    issuer_url: "https://your-company.okta.com"
+    client_id: "0oa1234567890abcdef"
+    client_secret: "${OKTA_CLIENT_SECRET}"
+    redirect_uri: "https://vero.internal.net/api/auth/oidc/callback"
+```
+
+---
+
+## Dynamic Directory Group Mapping
+
+Vero automatically maps incoming IdP directory groups to internal roles and domain permissions:
+
+* **`Admin-Group`** ➔ `role = "admin"`, `allowed_domains = ["*"]`
+* **`Finance-Team`** ➔ `role = "analyst"`, `allowed_domains = ["finance"]`
+* **`Sales-Team`** ➔ `role = "viewer"`, `allowed_domains = ["sales"]`

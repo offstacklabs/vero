@@ -1,0 +1,48 @@
+---
+title: "Semantic Layer Overview"
+description: "Define business metrics and contextual guidelines with pure Markdown and SQL."
+---
+
+# Vero Semantic Layer
+
+Instead of maintaining a complex caching cluster or writing fragile nested YAML, Vero uses **Context Engineering**:
+
+```
+.vero/
+├── RULES.md        # Plain English business guidelines
+└── metrics.yaml    # Verified SQL metric formulas
+```
+
+---
+
+## 1. Business Guidelines (`RULES.md`)
+
+Write organizational rules in pure Markdown. The agent injects these into its reasoning prompt before synthesizing SQL:
+
+```markdown
+# Accounting & Revenue Guidelines
+- Monthly Recurring Revenue (MRR) is derived strictly from `subscriptions` where `status = 'active'`.
+- Annual Recurring Revenue (ARR) is `MRR * 12`.
+- Fiscal year begins on February 1st.
+- Exclude internal employee accounts where `email LIKE '%@company.com'`.
+```
+
+---
+
+## 2. Semantic Metrics (`metrics.yaml`)
+
+Define reusable, verified metrics in lean YAML:
+
+```yaml
+- name: gross_margin_pct
+  description: "Gross margin percentage excluding returns"
+  sql: "(SUM(revenue) - SUM(cost)) / NULLIF(SUM(revenue), 0) * 100"
+  domain: "finance"
+
+- name: churn_rate
+  description: "Monthly customer churn percentage"
+  sql: "COUNT(DISTINCT CASE WHEN status = 'canceled' THEN id END) / NULLIF(COUNT(DISTINCT id), 0)"
+  domain: "customer_success"
+```
+
+The agent automatically pulls these formulas whenever a user asks about `gross margin` or `churn rate`.

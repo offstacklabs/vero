@@ -1,0 +1,43 @@
+---
+title: "Model Context Protocol (MCP)"
+description: "Connect Vero to Claude Desktop, Cursor, Zed, and Windsurf via FastMCP."
+---
+
+# Model Context Protocol (MCP)
+
+Vero exposes a native [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server, allowing developers to query their warehouse directly from Claude Desktop or AI code editors.
+
+---
+
+## Launching the MCP Server
+
+```bash
+cd vero-cli
+uv run vero mcp
+```
+
+---
+
+## Claude Desktop Configuration
+
+Add Vero to your `claude_desktop_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "vero": {
+      "command": "uv",
+      "args": [
+        "--directory",
+        "/path/to/your/project/vero-cli",
+        "run",
+        "vero",
+        "mcp"
+      ]
+    }
+  }
+}
+```
+
+Now you can ask Claude Desktop:
+> *"Use Vero to fetch total Q3 revenue and compare it against our marketing spend."*

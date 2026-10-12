@@ -1,0 +1,45 @@
+---
+title: "Pre-Execution Cost Guard"
+description: "Protect cloud budgets with automatic byte scan limits and self-healing partition injection."
+---
+
+# Pre-Execution Cost Guard
+
+Unrestricted LLM Text-to-SQL agents can accidentally fire multi-terabyte queries on columnar warehouses like Google BigQuery and Snowflake. Vero's Cost Guard prevents runaway cloud bills.
+
+---
+
+## The Safety Loop
+
+```
+AI generates SQL query
+       │
+       ▼
+[ BigQuery Dry Run ($0) ] ➔ Returns projected scan bytes
+       │
+       ├─ Projected < 10 GB ➔ Safe: Execute against warehouse
+       │
+       └─ Projected > 10 GB ➔ BLOCKED!
+              │
+              ▼
+       [ Reflexion Loop ] ➔ Feeds error back to LLM
+              │
+              ▼
+       Injects partition filters: `WHERE _PARTITIONDATE >= '2026-01-01'`
+              │
+              ▼
+       Re-evaluates dry run ➔ Safe execution!
+```
+
+---
+
+## Configuration
+
+In `.vero/config.yaml`:
+
+```yaml
+cost_guard:
+  enabled: true
+  max_bytes_scanned: 10737418240  # 10 GB safety ceiling
+  cost_per_tb_usd: 6.25           # BigQuery standard rate ($6.25 / TB)
+```

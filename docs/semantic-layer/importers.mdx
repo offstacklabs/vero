@@ -1,0 +1,57 @@
+---
+title: "Universal Semantic Importers"
+description: "Migrate existing metric definitions from Looker LookML, dbt MetricFlow, and Cube.js into Vero in 1 click."
+---
+
+# Universal Semantic Importers
+
+Enterprises have spent years defining measures and dimensions in legacy tools. Vero provides **zero-overhead translation** to import your existing models directly into Vero's native semantic catalog.
+
+---
+
+## 1. Looker (LookML `.lkml`)
+
+Vero parses LookML `.view.lkml` files, converting `measure` blocks into pure SQL aggregations:
+
+```lookml
+# orders.view.lkml
+measure: total_revenue {
+  type: sum
+  sql: ${sale_price} ;;
+  description: "Gross merchandise revenue"
+}
+```
+
+Import via CLI:
+```bash
+uv run vero metrics sync --from lookml --path ./views/orders.view.lkml --domain finance
+```
+
+---
+
+## 2. dbt Core MetricFlow (`manifest.json`)
+
+Vero parses dbt 1.6+ `target/manifest.json`, extracting `semantic_models` and `metrics`:
+
+```bash
+uv run vero metrics sync --from dbt --path ./target/manifest.json --domain marketing
+```
+
+---
+
+## 3. Cube.js (`schema/*.yml`)
+
+Imports Cube cubes, measures, and dimension definitions:
+
+```bash
+uv run vero metrics sync --from cube --path ./schema/Orders.yml --domain sales
+```
+
+---
+
+## 4. In Vero Studio UI
+
+1. Open **`⚙️ Knowledge & Settings`** in the left sidebar.
+2. Select the **`Semantic Layer`** tab.
+3. Click **`Import (LookML / dbt / Ossie)`**.
+4. Paste your file contents and click **`Sync Metrics to Vero`**.

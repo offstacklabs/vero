@@ -1,0 +1,61 @@
+---
+title: "Apache Ossie (OSI Standard)"
+description: "Native support for the open, vendor-neutral Apache Ossie semantic interchange specification."
+---
+
+# Apache Ossie (Open Semantic Interchange)
+
+[Apache Ossie (incubating)](https://github.com/apache) — formerly known as the **Open Semantic Interchange (OSI)** — is the vendor-neutral specification for portable semantic metadata across AI agents, BI tools, and data warehouses.
+
+Vero is one of the first analytics agents to natively support the Apache Ossie specification.
+
+---
+
+## Example Ossie Specification (`model.ossie.yaml`)
+
+```yaml
+version: "0.2.0.dev0"
+name: e_commerce_model
+description: "Enterprise e-commerce sales semantic model"
+
+datasets:
+  - name: orders
+    source: analytics.fct_orders
+    fields:
+      - name: order_date
+        datatype: Date
+        dimension:
+          is_time: true
+      - name: amount
+        datatype: Decimal
+
+metrics:
+  - name: total_revenue
+    description: "Gross customer spend before discounts"
+    datatype: Decimal
+    expression:
+      dialects:
+        - dialect: ANSI_SQL
+          expression: "SUM(orders.amount)"
+        - dialect: SNOWFLAKE
+          expression: "SUM(orders.amount::FLOAT)"
+    ai_context:
+      synonyms:
+        - "gross sales"
+        - "turnover"
+        - "top-line"
+```
+
+---
+
+## Native Parsing in Vero
+
+When imported, Vero automatically:
+1. **Resolves Warehouse Dialects**: Matches your active warehouse dialect (e.g. `SNOWFLAKE` or `BIGQUERY`), falling back to `ANSI_SQL`.
+2. **Harvests Dataset Dimensions**: Maps temporal and categorical fields into dimension references for filtering.
+3. **Grounds Natural Language Synonyms**: Injects `ai_context.synonyms` (*"turnover"*, *"top-line"*) into the LLM context so the agent recognizes business slang with 100% accuracy.
+
+Import via CLI:
+```bash
+uv run vero metrics sync --from ossie --path ./model.ossie.yaml --domain global
+```

@@ -1,0 +1,32 @@
+---
+title: "Semantic Query Cache"
+description: "Zero-compute query caching with normalized AST hashing."
+---
+
+# Semantic Query Cache
+
+Vero includes an embedded **Semantic AST Cache** backed by local SQLite/DuckDB (`.vero/semantic_cache.db`).
+
+---
+
+## How It Works
+
+1. **AST Normalization**: When a query is generated, Vero parses the SQL AST, stripping whitespace, comment artifacts, and case formatting.
+2. **Deterministic Hashing**: Generates a composite SHA-256 hash: `hash(dialect + normalized_ast)`.
+3. **Warehouse Interception**: If a non-expired cache entry exists:
+   * **Latency**: Returned in **`0.0ms`**
+   * **Warehouse Compute Cost**: **`$0.00`**
+   * The SQL card displays the green **`⚡ Cached`** audit badge.
+
+---
+
+## Configuration
+
+In `.vero/config.yaml`:
+
+```yaml
+cache:
+  enabled: true
+  ttl_seconds: 3600  # 1 hour Time-to-Live
+  max_size_mb: 500   # Max storage size before LRU eviction
+```

@@ -1,0 +1,37 @@
+---
+title: "Data Governance & PII Masking"
+description: "Automatic pattern-matching and column-level redaction for HIPAA and GDPR compliance."
+---
+
+# Data Governance & PII Masking
+
+To ensure compliance with GDPR, HIPAA, and SOC 2, Vero Enterprise includes an in-memory **Data Governance Engine** that sanitizes sensitive customer rows before results reach the client browser or LLM context window.
+
+---
+
+## Supported Masking Strategies
+
+* **`REDACT`**: Full redaction (e.g. `[REDACTED]`).
+* **`PARTIAL_EMAIL`**: Preserves domain while masking prefix (e.g. `j***@company.com`).
+* **`PARTIAL_PHONE`**: Masks all digits except the last four (e.g. `***-***-1234`).
+* **`PARTIAL_CARD`**: PCI-compliant payment masking (e.g. `****-****-****-4242`).
+* **`HASH` / `SHA256`**: Deterministic salted pseudonymization allowing analysts to perform aggregate counts and joins on customer IDs without exposing real identifiers.
+
+---
+
+## Configuration
+
+In `.vero/config.yaml`:
+
+```yaml
+governance:
+  enabled: true
+  auto_detect_pii: true
+  rules:
+    - column: "salary"
+      strategy: "REDACT"
+    - column: "social_security_number"
+      strategy: "REDACT"
+```
+
+All masked datasets in Vero Studio display the green **`🛡️ PII Masked`** compliance badge with a tooltip detailing which columns were sanitized.

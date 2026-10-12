@@ -1,0 +1,51 @@
+---
+title: "Embedded React SDK (@verodata/react)"
+description: "Embed white-labeled AI data chat directly into your B2B SaaS application in 3 lines of code."
+---
+
+# Embedded Analytics SDK (`@verodata/react`)
+
+The `@verodata/react` package allows B2B SaaS engineering teams to ship a customer-facing "Chat-with-your-data" feature in minutes.
+
+---
+
+## Installation
+
+```bash
+npm install @verodata/react recharts lucide-react
+```
+
+---
+
+## Usage
+
+```tsx
+import { VeroChat } from '@verodata/react';
+import '@verodata/react/dist/index.css';
+
+export default function AnalyticsTab() {
+  return (
+    <div style={{ height: '600px', width: '100%' }}>
+      <VeroChat 
+        token="vero_customer_api_key..."
+        apiBaseUrl="https://api.verodata.dev"
+        domain="tenant_acme_corp"
+        welcomeMessage="Hi! I am your Acme Corp AI data assistant. What metrics would you like to see?"
+        initialFollowUps={[
+          "Show total revenue this month",
+          "What is our churn rate?"
+        ]}
+      />
+    </div>
+  );
+}
+```
+
+---
+
+## Multi-Tenant Security by Default
+
+When embedding Vero for your SaaS customers:
+1. Your backend provisions a restricted API key bound to the `viewer` role and the customer's specific domain (`tenant_acme_corp`).
+2. When the customer asks questions, Vero physically sandboxes the LLM context to that tenant's schema.
+3. The customer cannot see other tenants' data and cannot execute mutating commands.
