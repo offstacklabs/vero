@@ -30,7 +30,11 @@ import {
   X,
   Sparkles,
   Layers,
-  Settings
+  Settings,
+  TrendingUp,
+  BarChart3,
+  Clock,
+  Users
 } from 'lucide-react';
 import { ChartVisualizer } from './components/ChartVisualizer';
 import { SqlEditor } from './components/SqlEditor';
@@ -1125,6 +1129,50 @@ export default function App() {
         {activeTab === 'chat' && (
           <>
             <div className="chat-container">
+              {messages.length <= 1 && (
+                <div className="chat-hero-welcome">
+                  <div className="hero-pill-badge">
+                    <Sparkles size={12} color="var(--accent-color)" />
+                    <span>AI Analytics Copilot</span>
+                  </div>
+                  <h1 className="hero-title">Ask anything about your data</h1>
+                  <p className="hero-subtitle">
+                    Grounded in your warehouse schemas, verified metrics, and business rules.
+                  </p>
+
+                  <div className="hero-starter-grid">
+                    <div className="hero-starter-card" onClick={() => sendMessage('Show total revenue by customer')}>
+                      <div className="starter-icon"><BarChart3 size={16} /></div>
+                      <div className="starter-text">
+                        <div className="starter-title">Revenue by Customer</div>
+                        <div className="starter-desc">Break down sales and top paying accounts</div>
+                      </div>
+                    </div>
+                    <div className="hero-starter-card" onClick={() => sendMessage('What is our monthly recurring revenue (MRR)?')}>
+                      <div className="starter-icon"><TrendingUp size={16} /></div>
+                      <div className="starter-text">
+                        <div className="starter-title">Monthly Recurring Revenue</div>
+                        <div className="starter-desc">Calculate active MRR and annual run-rate</div>
+                      </div>
+                    </div>
+                    <div className="hero-starter-card" onClick={() => sendMessage('Break down customers by industry and country')}>
+                      <div className="starter-icon"><Users size={16} /></div>
+                      <div className="starter-text">
+                        <div className="starter-title">Customer Demographics</div>
+                        <div className="starter-desc">Analyze segment and geography distribution</div>
+                      </div>
+                    </div>
+                    <div className="hero-starter-card" onClick={() => sendMessage('Show recent orders and their fulfillment status')}>
+                      <div className="starter-icon"><Clock size={16} /></div>
+                      <div className="starter-text">
+                        <div className="starter-title">Recent Order Activity</div>
+                        <div className="starter-desc">Inspect pending, shipped, and completed orders</div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {messages.map(msg => (
                 <div key={msg.id} className={`message-card ${msg.sender}`}>
                   <div className="message-header">
@@ -1141,44 +1189,6 @@ export default function App() {
                     <div className="message-body">{msg.text}</div>
                   )}
 
-                  {/* Context Grounding & Multi-Step Reasoning Trace */}
-                  {msg.sender === 'assistant' && (
-                    <ReasoningSteps
-                      thought={msg.thought}
-                      tablesUsed={msg.tables_used}
-                      durationMs={msg.duration_ms}
-                      dialect={dialect}
-                      reflectionSteps={msg.reflection_steps}
-                      bytesFormatted={msg.bytes_formatted}
-                      costUsd={msg.cost_usd}
-                      telemetry={msg.telemetry}
-                      cacheHit={msg.cache_hit}
-                    />
-                  )}
-
-                  {/* Generated SQL Artifact with Quick Actions */}
-                  {msg.sql && (
-                    <SqlCard
-                      sql={msg.sql}
-                      durationMs={msg.duration_ms}
-                      rowCount={msg.data?.row_count}
-                      dialect={dialect}
-                      bytesFormatted={msg.bytes_formatted}
-                      costUsd={msg.cost_usd}
-                      costGuardPassed={msg.cost_guard_passed}
-                      totalTokens={msg.telemetry?.total_tokens}
-                      cacheHit={msg.cache_hit}
-                      onOpenInEditor={handleOpenInEditor}
-                      onPin={() => handlePinTile({
-                        title: msg.text.slice(0, 36) || 'Query Result',
-                        tile_type: isSingleMetric(msg.data) ? 'kpi' : (msg.suggested_visualization && msg.suggested_visualization !== 'table' ? 'chart' : 'table'),
-                        chart_type: msg.suggested_visualization || 'bar',
-                        sql: msg.sql,
-                        data: msg.data
-                      })}
-                    />
-                  )}
-
                   {/* Single Value Metric KPI Card */}
                   {isSingleMetric(msg.data) && (
                     <div style={{ marginTop: '16px' }}>
@@ -1186,6 +1196,16 @@ export default function App() {
                         label={msg.data!.columns[0]} 
                         value={msg.data!.rows[0][0]} 
                       />
+                    </div>
+                  )}
+
+                  {/* Recharts Visualizer */}
+                  {!isSingleMetric(msg.data) && msg.suggested_visualization && msg.suggested_visualization !== 'table' && msg.data && (
+                    <div className="chart-container">
+                      <div style={{ fontSize: '12px', color: '#8b949e', marginBottom: '12px' }}>
+                        Data Visualization ({msg.suggested_visualization})
+                      </div>
+                      <ChartVisualizer type={msg.suggested_visualization} data={msg.data} />
                     </div>
                   )}
 
@@ -1197,16 +1217,6 @@ export default function App() {
                       tableName="vero_analytics_result"
                       maskedColumns={msg.data.masked_columns}
                     />
-                  )}
-
-                  {/* Recharts Visualizer */}
-                  {!isSingleMetric(msg.data) && msg.suggested_visualization && msg.suggested_visualization !== 'table' && msg.data && (
-                    <div className="chart-container">
-                      <div style={{ fontSize: '12px', color: '#8b949e', marginBottom: '12px' }}>
-                        Data Visualization ({msg.suggested_visualization})
-                      </div>
-                      <ChartVisualizer type={msg.suggested_visualization} data={msg.data} />
-                    </div>
                   )}
 
                   {/* Diagnostic Root Cause Analysis Engine */}
@@ -1267,6 +1277,44 @@ export default function App() {
                         </div>
                       )}
                     </div>
+                  )}
+
+                  {/* Context Grounding & Multi-Step Reasoning Trace */}
+                  {msg.sender === 'assistant' && (
+                    <ReasoningSteps
+                      thought={msg.thought}
+                      tablesUsed={msg.tables_used}
+                      durationMs={msg.duration_ms}
+                      dialect={dialect}
+                      reflectionSteps={msg.reflection_steps}
+                      bytesFormatted={msg.bytes_formatted}
+                      costUsd={msg.cost_usd}
+                      telemetry={msg.telemetry}
+                      cacheHit={msg.cache_hit}
+                    />
+                  )}
+
+                  {/* Generated SQL Artifact with Quick Actions */}
+                  {msg.sql && (
+                    <SqlCard
+                      sql={msg.sql}
+                      durationMs={msg.duration_ms}
+                      rowCount={msg.data?.row_count}
+                      dialect={dialect}
+                      bytesFormatted={msg.bytes_formatted}
+                      costUsd={msg.cost_usd}
+                      costGuardPassed={msg.cost_guard_passed}
+                      totalTokens={msg.telemetry?.total_tokens}
+                      cacheHit={msg.cache_hit}
+                      onOpenInEditor={handleOpenInEditor}
+                      onPin={() => handlePinTile({
+                        title: msg.text.slice(0, 36) || 'Query Result',
+                        tile_type: isSingleMetric(msg.data) ? 'kpi' : (msg.suggested_visualization && msg.suggested_visualization !== 'table' ? 'chart' : 'table'),
+                        chart_type: msg.suggested_visualization || 'bar',
+                        sql: msg.sql,
+                        data: msg.data
+                      })}
+                    />
                   )}
 
                   {/* Dynamic Follow-up Prompt Chips */}
